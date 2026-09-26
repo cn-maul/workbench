@@ -1,0 +1,424 @@
+/* ============================================================
+   仿 HeroUI (React) 设计令牌 —— 手写实现，不引入其运行时
+   色板取自 heroui.com.cn/docs/customization/colors
+   ============================================================ */
+:root {
+  /* 主题切换只翻这套变量，组件层不感知 */
+  color-scheme: light;
+
+  --ui-background: #ffffff;
+  --ui-foreground: #11181c;
+  --ui-content1: #11181c;
+  --ui-content2: #515457;
+  --ui-content3: #8e9194;
+  --ui-content4: #babdBF;
+
+  /* 中性面（亮色落在 gray-100 系） */
+  --ui-content-background1: #f4f4f5;
+  --ui-content-background2: #e4e4e7;
+  --ui-content-background3: #d4d4d8;
+  --ui-content-background4: #71717a;
+
+  --ui-default-50: #fafafa;
+  --ui-default-100: #f4f4f5;
+  --ui-default-200: #e4e4e7;
+  --ui-default-300: #d4d4d8;
+  --ui-default-400: #a1a1aa;
+  --ui-default-500: #71717a;
+  --ui-default-600: #52525b;
+  --ui-default-700: #3f3f46;
+  --ui-default-800: #27272a;
+  --ui-default-900: #18181b;
+
+  --ui-divider: #e4e4e7;
+
+  --ui-focus: #006fee;
+  --ui-success: #17c964;
+  --ui-warning: #f5a524;
+  --ui-danger: #f31260;
+
+  --ui-overlay: rgba(0, 0, 0, 0.5);
+  --ui-backshadow: rgba(0, 0, 0, 0.15);
+
+  --radius-tiny: 4px;
+  --radius-small: 8px;
+  --radius-medium: 12px;
+  --radius-large: 14px;
+
+  --shadow-sm: 0 5px 7px 0 rgb(0 0 0 / 0.03);
+  --shadow-md: 0 8px 20px 0 rgb(0 0 0 / 0.04), 0 6px 6px -2px rgb(0 0 0 / 0.03);
+  --shadow-lg: 0 12px 24px -1px rgb(0 0 0 / 0.06), 0 4px 8px -2px rgb(0 0 0 / 0.05);
+
+  --font: Inter, 'Segoe UI Variable', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --sidebar-w: 248px;
+  --header-h: 56px;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+
+  --ui-background: #000000;
+  --ui-foreground: #ecedee;
+  --ui-content1: #ecedee;
+  --ui-content2: #b8bbbd;
+  --ui-content3: #8e9194;
+  --ui-content4: #515457;
+
+  /* 暗色面在 gray-500/600/700 上叠透明度（用 color-mix 近似） */
+  --ui-content-background1: color-mix(in srgb, #3f3f46 64%, transparent);
+  --ui-content-background2: color-mix(in srgb, #3f3f46 76%, transparent);
+  --ui-content-background3: color-mix(in srgb, #3f3f46 84%, transparent);
+  --ui-content-background4: color-mix(in srgb, #d4d4d8 84%, transparent);
+
+  --ui-divider: color-mix(in srgb, #ffffff 14%, transparent);
+
+  --ui-overlay: rgba(0, 0, 0, 0.6);
+  --ui-backshadow: rgba(255, 255, 255, 0.06);
+
+  --shadow-sm: 0 0 5px 0 rgb(0 0 0 / 0.9), 0 2px 10px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 10px 16px -2px rgb(0 0 0 / 0.85), 0 4px 8px -2px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 18px 36px -4px rgb(0 0 0 / 0.85), 0 8px 12px -6px rgb(0 0 0 / 0.5);
+}
+
+* { box-sizing: border-box; }
+
+html, body, #app { height: 100%; margin: 0; }
+
+body {
+  font-family: var(--font);
+  font-size: 14px;
+  letter-spacing: 0.015em;
+  color: var(--ui-content1);
+  background: var(--ui-background);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+a { color: var(--ui-focus); text-decoration: none; }
+
+::selection { background: color-mix(in srgb, var(--ui-focus) 28%, transparent); }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--ui-default-300); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ui-default-400); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------------- Button（药丸、实色/描边/淡色三变体） ---------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--ui-content-background1);
+  color: var(--ui-content1);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+.btn:hover { background: var(--ui-content-background2); }
+.btn:active { transform: scale(0.98); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ui-background), 0 0 0 4px var(--ui-focus); }
+
+.btn-primary {
+  background: var(--ui-focus);
+  color: #fff;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--ui-focus) 35%, transparent);
+}
+.btn-primary:hover { background: #005bc4; }
+
+.btn-danger { color: var(--ui-danger); background: color-mix(in srgb, var(--ui-danger) 12%, transparent); }
+.btn-danger:hover { background: color-mix(in srgb, var(--ui-danger) 20%, transparent); }
+
+.btn-sm { height: 28px; padding: 0 12px; font-size: 12px; }
+
+/* 图标按钮（主题切换等） */
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+
+/* ---------------- Input / Textarea（无边框灰底，焦点环） ---------------- */
+.input, .textarea {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  background: var(--ui-content-background1);
+  color: var(--ui-content1);
+  font-size: 14px;
+  font-family: inherit;
+  padding: 9px 12px;
+  outline: none;
+  transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.input::placeholder, .textarea::placeholder { color: var(--ui-content3); }
+.input:hover, .textarea:hover { background: var(--ui-content-background2); }
+.input:focus, .textarea:focus {
+  background: var(--ui-background);
+  border-color: var(--ui-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-focus) 40%, transparent);
+}
+.textarea { resize: none; }
+
+/* ---------------- Tabs（药丸式，HeroUI tabs solid 变体） ---------------- */
+.tabs {
+  display: inline-flex;
+  gap: 0;
+  border: none;
+  background: var(--ui-content-background1);
+  border-radius: 999px;
+  padding: 3px;
+}
+.tab {
+  padding: 6px 16px;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--ui-content2);
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s, box-shadow 0.15s;
+}
+.tab:hover { color: var(--ui-content1); }
+.tab.active {
+  background: var(--ui-background);
+  color: var(--ui-content1);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------------- 布局：顶栏（毛玻璃）+ 侧栏 + 内容 ---------------- */
+.shell { display: flex; flex-direction: column; height: 100%; }
+.topbar {
+  height: var(--header-h);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  background: color-mix(in srgb, var(--ui-background) 70%, transparent);
+  backdrop-filter: blur(12px) saturate(154%);
+  -webkit-backdrop-filter: blur(12px) saturate(154%);
+  box-shadow: inset 0 -1px 0 var(--ui-divider);
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+.topbar .title { font-weight: 600; font-size: 15px; letter-spacing: 0.02em; }
+.topbar .spacer { flex: 1; }
+.main { display: flex; flex: 1; min-height: 0; }
+.sidebar {
+  width: var(--sidebar-w);
+  border-right: 1px solid var(--ui-divider);
+  overflow-y: auto;
+  padding: 12px 8px;
+  flex-shrink: 0;
+}
+.content { flex: 1; min-width: 0; overflow-y: auto; padding: 20px 28px; }
+
+/* ---------------- Dropdown / 项目树（药丸行 + 分组 chevron） ---------------- */
+.tree-group { margin-bottom: 4px; }
+.tree-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ui-content3);
+  padding: 7px 10px 4px;
+  user-select: none;
+  background: none;
+  border: none;
+  font-family: inherit;
+  cursor: default;
+}
+.tree-label.clickable { cursor: pointer; }
+.tree-label.clickable:hover { color: var(--ui-content1); }
+.tree-label .spacer { flex: 1; }
+.tree-label .chev {
+  font-size: 10px;
+  transition: transform 0.15s;
+  display: inline-block;
+}
+.tree-label .chev.open { transform: rotate(90deg); }
+.tree-body { overflow: hidden; }
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: var(--radius-small);
+  color: var(--ui-content1);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.12s;
+}
+.tree-item:hover { background: var(--ui-content-background1); }
+.tree-item.active {
+  background: var(--ui-content-background2);
+  color: var(--ui-content1);
+  font-weight: 500;
+}
+.tree-item .pending { color: var(--ui-content4); font-style: italic; }
+
+/* ---------------- Table（卡片容器 + 分隔线 + 行悬停） ---------------- */
+.card {
+  background: var(--ui-background);
+  border: 1px solid var(--ui-default-200);
+  border-radius: var(--radius-large);
+  box-shadow: var(--shadow-sm);
+}
+html[data-theme='dark'] .card { border-color: var(--ui-default-800); }
+
+.table-wrap { overflow: auto; }
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td {
+  text-align: left;
+  padding: 10px 16px;
+  white-space: nowrap;
+}
+.table thead th {
+  font-size: 12px;
+  color: var(--ui-content2);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.table thead { background: var(--ui-content-background1); }
+.table thead tr:first-child th:first-child { border-top-left-radius: var(--radius-large); }
+.table tbody tr { border-top: 1px solid var(--ui-divider); transition: background-color 0.12s; }
+.table tbody tr:hover { background: var(--ui-content-background1); }
+.table td { color: var(--ui-content1); }
+
+/* ---------------- Chip / Badge（淡色药丸） ---------------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  background: color-mix(in srgb, var(--ui-content2) 12%, transparent);
+  color: var(--ui-content2);
+}
+.badge-primary { background: color-mix(in srgb, var(--ui-focus) 12%, transparent); color: var(--ui-focus); }
+.badge-danger { background: color-mix(in srgb, var(--ui-danger) 14%, transparent); color: var(--ui-danger); }
+
+/* ---------------- Modal ---------------- */
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: var(--ui-overlay);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fade-in 0.18s ease-out;
+}
+.modal {
+  background: var(--ui-background);
+  border-radius: var(--radius-large);
+  box-shadow: var(--shadow-lg);
+  width: min(480px, calc(100vw - 32px));
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  padding: 22px;
+  animation: pop-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(0.96); } }
+.modal h3 { margin: 0 0 14px; font-size: 16px; font-weight: 600; }
+.modal .modal-body { overflow-y: auto; min-height: 0; }
+.modal .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+
+/* ---------------- 引导页 ---------------- */
+.guide {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(60% 50% at 30% 0%, color-mix(in srgb, var(--ui-focus) 7%, transparent) 0%, transparent 100%)
+    var(--ui-default-50);
+}
+html[data-theme='dark'] .guide { background-color: #0a0a0b; }
+.guide-card {
+  width: min(520px, calc(100vw - 32px));
+  background: var(--ui-background);
+  border: 1px solid var(--ui-default-200);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  padding: 32px;
+}
+html[data-theme='dark'] .guide-card { border-color: var(--ui-default-800); }
+.guide-card h2 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
+.guide-card p { color: var(--ui-content2); line-height: 1.65; }
+
+/* ---------------- Toast（浮层 chip） ---------------- */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ui-default-800);
+  color: #fff;
+  padding: 9px 18px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  z-index: 200;
+  font-size: 13px;
+}
+html[data-theme='dark'] .toast { background: var(--ui-default-200); color: var(--ui-default-900); }
+.toast.error { background: var(--ui-danger); color: #fff; }
+
+/* ---------------- Markdown 渲染 ---------------- */
+.md-body { line-height: 1.75; color: var(--ui-content1); word-wrap: break-word; }
+.md-body h1 { font-size: 1.6em; border-bottom: 1px solid var(--ui-divider); padding-bottom: 6px; }
+.md-body h2 { font-size: 1.3em; border-bottom: 1px solid var(--ui-divider); padding-bottom: 4px; }
+.md-body code {
+  background: var(--ui-content-background1);
+  padding: 2px 6px;
+  border-radius: var(--radius-tiny);
+  font-size: 0.92em;
+}
+.md-body pre code { display: block; padding: 12px; overflow-x: auto; }
+.md-body blockquote {
+  border-left: 3px solid var(--ui-default-300);
+  margin: 8px 0;
+  padding: 2px 14px;
+  color: var(--ui-content2);
+}
+.md-body table { border-collapse: collapse; }
+.md-body th, .md-body td { border: 1px solid var(--ui-default-200); padding: 5px 12px; }
+.md-body img { max-width: 100%; border-radius: var(--radius-small); }
+.md-body a { text-decoration: underline; text-underline-offset: 2px; }
+.md-ref {
+  color: var(--ui-focus);
+  cursor: pointer;
+  border-radius: var(--radius-tiny);
+  padding: 0 2px;
+}
+.md-ref:hover { background: color-mix(in srgb, var(--ui-focus) 10%, transparent); }
+.md-ref.missing { color: var(--ui-content4); text-decoration: line-through; }
+.md-ref.missing:hover { background: none; }
+
+/* ---------------- 空态 / 骨架 ---------------- */
+.empty { color: var(--ui-content3); text-align: center; padding: 56px 0; }

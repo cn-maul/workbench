@@ -1,0 +1,1 @@
+占位文件：保证空 dist 也能 go:embed。真实构建产物由前端 npm run build 生成，已被 .gitignore 忽略。

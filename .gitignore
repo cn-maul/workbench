@@ -1,0 +1,15 @@
+# 构建产物与运行时文件（exe 走 Release 附件，不入库）
+工作台.exe
+internal/web/dist/*
+!internal/web/dist/.gitkeep
+workbench.json
+workbench.log
+*.log
+
+# 前端依赖
+frontend/node_modules/
+frontend/.vite/
+
+# 系统杂项
+Thumbs.db
+.DS_Store

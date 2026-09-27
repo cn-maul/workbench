@@ -6,18 +6,13 @@
   /* 主题切换只翻这套变量，组件层不感知 */
   color-scheme: light;
 
-  --ui-background: #ffffff;
+  /* 应用底色 = HeroUI --background：卡片/浮层靠它衬托，纯白底上白卡会糊成一片 */
+  --ui-page: #f4f4f5;
   --ui-foreground: #11181c;
   --ui-content1: #11181c;
   --ui-content2: #515457;
   --ui-content3: #8e9194;
   --ui-content4: #babdBF;
-
-  /* 中性面（亮色落在 gray-100 系） */
-  --ui-content-background1: #f4f4f5;
-  --ui-content-background2: #e4e4e7;
-  --ui-content-background3: #d4d4d8;
-  --ui-content-background4: #71717a;
 
   --ui-default-50: #fafafa;
   --ui-default-100: #f4f4f5;
@@ -31,6 +26,59 @@
   --ui-default-900: #18181b;
 
   --ui-divider: #e4e4e7;
+  /* 表格面（HeroUI v3：surface 表体 / surface-secondary 容器底） */
+  --ui-surface: #ffffff;
+  --ui-surface-secondary: #efefef;
+  --ui-table-sep: color-mix(in srgb, var(--ui-foreground) 8%, transparent);
+  /* 悬停行：HeroUI 用 surface/40 压在 surface-secondary 上，两套主题同一个公式 */
+  --ui-table-hover: color-mix(in srgb, var(--ui-surface) 40%, transparent);
+  /* 标签组（HeroUI v3：轨道 --default / 滑块 --segment） */
+  --ui-segment-track: var(--ui-default);
+  --ui-segment: #ffffff;
+  /* 次要文字 = HeroUI --muted */
+  --ui-muted: var(--ui-default-500);
+
+  /* ---- HeroUI 计算令牌（themes/default/variables.css 的同名公式） ---- */
+  --ui-default: var(--ui-default-200);
+  --ui-default-hover: color-mix(in oklab, var(--ui-default) 96%, var(--ui-foreground) 4%);
+  --ui-default-soft: color-mix(in oklab, var(--ui-default) 50%, transparent);
+  /* hover 一律 = 主色提亮 10% 白（accent-foreground 是 snow），两套主题同向 */
+  --ui-accent-hover: color-mix(in oklab, var(--ui-focus) 90%, #ffffff 10%);
+  --ui-danger-hover: color-mix(in oklab, var(--ui-danger) 90%, #ffffff 10%);
+  --ui-accent-soft: color-mix(in oklab, var(--ui-focus) 15%, transparent);
+  --ui-accent-soft-hover: color-mix(in oklab, var(--ui-focus) 20%, transparent);
+  --ui-accent-soft-fg: color-mix(in oklab, var(--ui-focus) 70%, var(--ui-foreground) 30%);
+  --ui-danger-soft: color-mix(in oklab, var(--ui-danger) 15%, transparent);
+  --ui-danger-soft-hover: color-mix(in oklab, var(--ui-danger) 20%, transparent);
+  --ui-danger-soft-fg: color-mix(in oklab, var(--ui-danger) 70%, var(--ui-foreground) 30%);
+
+  /* 表单域：HeroUI 的 primary field 是白底 + 极细影，压在白色 surface（卡片/Modal）上会糊成一片，
+     它自己的 input--secondary 变体才是这种场景的答案：底色 --default、shadow-none */
+  --ui-field-bg: var(--ui-default);
+  --ui-field-hover: color-mix(in oklab, var(--ui-field-bg) 90%, var(--ui-foreground) 2%);
+  --ui-field-fg: var(--ui-foreground);
+  --ui-field-placeholder: var(--ui-muted);
+
+  /* 阴影：surface（卡片）/ overlay（浮层）/ field（输入域） */
+  --ui-surface-shadow:
+    0 2px 4px 0 rgba(0, 0, 0, 0.04), 0 1px 2px 0 rgba(0, 0, 0, 0.06), 0 0 1px 0 rgba(0, 0, 0, 0.06);
+  --ui-field-shadow: var(--ui-surface-shadow);
+  --ui-overlay-shadow:
+    0 2px 8px 0 rgba(0, 0, 0, 0.06), 0 -6px 12px 0 rgba(0, 0, 0, 0.03), 0 14px 28px 0 rgba(0, 0, 0, 0.08);
+
+  /* 开关关闭态轨道色（亮色 default / 暗色 default） */
+  --switch-off: var(--ui-default);
+  /* 选中态悬停 = accent-hover */
+  --switch-on-hover: var(--ui-accent-hover);
+  /* 分组标题文字 */
+  --ui-section-label: var(--ui-muted);
+  /* 按钮组（HeroUI v3 toggle-button：底色 --default，选中 --accent-soft） */
+  --tbg-bg: var(--ui-default);
+  --tbg-bg-hover: var(--ui-default-hover);
+  --tbg-fg: color-mix(in srgb, var(--ui-foreground) 90%, transparent);
+  --tbg-sel: var(--ui-accent-soft);
+  --tbg-sel-hover: var(--ui-accent-soft-hover);
+  --tbg-sel-fg: var(--ui-accent-soft-fg);
 
   --ui-focus: #006fee;
   --ui-success: #17c964;
@@ -38,16 +86,14 @@
   --ui-danger: #f31260;
 
   --ui-overlay: rgba(0, 0, 0, 0.5);
-  --ui-backshadow: rgba(0, 0, 0, 0.15);
+  /* 主题色淡底透明度：暗色下压在黑底上，需要更高 alpha 才看得出来 */
+  --accent-weak: 10%;
 
   --radius-tiny: 4px;
   --radius-small: 8px;
   --radius-medium: 12px;
-  --radius-large: 14px;
-
-  --shadow-sm: 0 5px 7px 0 rgb(0 0 0 / 0.03);
-  --shadow-md: 0 8px 20px 0 rgb(0 0 0 / 0.04), 0 6px 6px -2px rgb(0 0 0 / 0.03);
-  --shadow-lg: 0 12px 24px -1px rgb(0 0 0 / 0.06), 0 4px 8px -2px rgb(0 0 0 / 0.05);
+  /* HeroUI --radius-3xl（圆角统一 = radius × 3，浮层与卡片都用它） */
+  --radius-large: 24px;
 
   --font: Inter, 'Segoe UI Variable', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
   --sidebar-w: 248px;
@@ -57,27 +103,34 @@
 html[data-theme='dark'] {
   color-scheme: dark;
 
-  --ui-background: #000000;
+  --ui-page: #101013;
   --ui-foreground: #ecedee;
   --ui-content1: #ecedee;
   --ui-content2: #b8bbbd;
   --ui-content3: #8e9194;
   --ui-content4: #515457;
 
-  /* 暗色面在 gray-500/600/700 上叠透明度（用 color-mix 近似） */
-  --ui-content-background1: color-mix(in srgb, #3f3f46 64%, transparent);
-  --ui-content-background2: color-mix(in srgb, #3f3f46 76%, transparent);
-  --ui-content-background3: color-mix(in srgb, #3f3f46 84%, transparent);
-  --ui-content-background4: color-mix(in srgb, #d4d4d8 84%, transparent);
-
   --ui-divider: color-mix(in srgb, #ffffff 14%, transparent);
+  --ui-surface: #17181c;
+  --ui-surface-secondary: #232326;
+  --ui-table-sep: color-mix(in srgb, #ffffff 10%, transparent);
+  --ui-segment: #4b4e52;
+
+  /* HeroUI 暗色 --default / --muted（--ui-field-bg 通过 var 间接自动跟随 --ui-default，不用再覆盖） */
+  --ui-default: var(--ui-default-800);
+  --ui-muted: var(--ui-default-400);
+  --ui-accent-soft: color-mix(in oklab, var(--ui-focus) 12%, transparent);
+  --ui-accent-soft-hover: color-mix(in oklab, var(--ui-focus) 16%, transparent);
+  --ui-accent-soft-fg: color-mix(in oklab, var(--ui-focus) 80%, var(--ui-foreground) 30%);
+  --ui-danger-soft-fg: color-mix(in oklab, var(--ui-danger) 80%, var(--ui-foreground) 30%);
+
+  /* 暗色 HeroUI 不给卡片/字段投影，只靠底色差；浮层是一圈 1px 内高光 */
+  --ui-surface-shadow: inset 0 0 0 0 transparent;
+  --ui-field-shadow: inset 0 0 0 0 transparent;
+  --ui-overlay-shadow: inset 0 0 1px 0 rgba(255, 255, 255, 0.3);
 
   --ui-overlay: rgba(0, 0, 0, 0.6);
-  --ui-backshadow: rgba(255, 255, 255, 0.06);
-
-  --shadow-sm: 0 0 5px 0 rgb(0 0 0 / 0.9), 0 2px 10px 0 rgb(0 0 0 / 0.4);
-  --shadow-md: 0 10px 16px -2px rgb(0 0 0 / 0.85), 0 4px 8px -2px rgb(0 0 0 / 0.5);
-  --shadow-lg: 0 18px 36px -4px rgb(0 0 0 / 0.85), 0 8px 12px -6px rgb(0 0 0 / 0.5);
+  --accent-weak: 22%;
 }
 
 * { box-sizing: border-box; }
@@ -89,7 +142,7 @@ body {
   font-size: 14px;
   letter-spacing: 0.015em;
   color: var(--ui-content1);
-  background: var(--ui-background);
+  background: var(--ui-page);
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.2s, color 0.2s;
 }
@@ -99,107 +152,250 @@ a { color: var(--ui-focus); text-decoration: none; }
 ::selection { background: color-mix(in srgb, var(--ui-focus) 28%, transparent); }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: var(--ui-default-300); border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: var(--ui-default-400); }
+::-webkit-scrollbar-thumb { background: color-mix(in oklch, var(--ui-foreground) 15%, transparent); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: color-mix(in oklch, var(--ui-foreground) 25%, transparent); }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* ---------------- Button（药丸、实色/描边/淡色三变体） ---------------- */
+/* ---------------- Button（照 heroui v3 packages/styles/components/button.css） ---------------- */
+/* md 尺寸：高 36、左右 16、圆角 24（在 36 高上即药丸）、gap 8 */
 .btn {
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
+  width: fit-content;
   height: 36px;
   padding: 0 16px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background: var(--ui-content-background1);
+  border: none;
+  border-radius: var(--radius-large);
+  background: var(--ui-default);
   color: var(--ui-content1);
   font-size: 14px;
   font-weight: 500;
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+  outline: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transform: translateZ(0);
+  transition: transform 0.25s ease, background-color 0.1s cubic-bezier(0, 0, 0.2, 1), box-shadow 0.1s cubic-bezier(0, 0, 0.2, 1);
 }
-.btn:hover { background: var(--ui-content-background2); }
-.btn:active { transform: scale(0.98); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-.btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ui-background), 0 0 0 4px var(--ui-focus); }
+@media (hover: hover) {
+  .btn:hover { background: var(--ui-default-hover); }
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+.btn:focus-visible { box-shadow: 0 0 0 2px var(--ui-page), 0 0 0 4px var(--ui-focus); }
 
 .btn-primary {
   background: var(--ui-focus);
   color: #fff;
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--ui-focus) 35%, transparent);
 }
-.btn-primary:hover { background: #005bc4; }
+@media (hover: hover) {
+  .btn-primary:hover { background: var(--ui-accent-hover); }
+}
+.btn-primary:active { background: var(--ui-accent-hover); }
 
-.btn-danger { color: var(--ui-danger); background: color-mix(in srgb, var(--ui-danger) 12%, transparent); }
-.btn-danger:hover { background: color-mix(in srgb, var(--ui-danger) 20%, transparent); }
+/* danger 在应用里一直是「淡红底 + 红字」，对应 HeroUI danger-soft 变体 */
+.btn-danger { background: var(--ui-danger-soft); color: var(--ui-danger-soft-fg); }
+@media (hover: hover) {
+  .btn-danger:hover { background: var(--ui-danger-soft-hover); }
+}
+.btn-danger:active { background: var(--ui-danger-soft-hover); }
 
-.btn-sm { height: 28px; padding: 0 12px; font-size: 12px; }
+.btn-sm { height: 32px; padding: 0 12px; }
+.btn-sm:active { transform: scale(0.98); }
 
 /* 图标按钮（主题切换等） */
 .btn-icon {
   width: 36px;
-  height: 36px;
   padding: 0;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   font-size: 15px;
 }
 
-/* ---------------- Input / Textarea（无边框灰底，焦点环） ---------------- */
+/* ---------------- Input / Textarea（照 heroui v3 input.css + textarea.css） ---------------- */
+/* HeroUI 字段：12px 圆角、0 边框、底色 + 细影，hover 只是极轻地压向前景色 */
 .input, .textarea {
   width: 100%;
-  border: 1px solid transparent;
-  border-radius: var(--radius-small);
-  background: var(--ui-content-background1);
-  color: var(--ui-content1);
+  border: none;
+  border-radius: var(--radius-medium);
+  background: var(--ui-field-bg);
+  color: var(--ui-field-fg);
   font-size: 14px;
   font-family: inherit;
-  padding: 9px 12px;
+  padding: 8px 12px;
   outline: none;
-  transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
+  box-shadow: var(--ui-field-shadow);
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s cubic-bezier(0, 0, 0.2, 1);
 }
-.input::placeholder, .textarea::placeholder { color: var(--ui-content3); }
-.input:hover, .textarea:hover { background: var(--ui-content-background2); }
+.input::placeholder, .textarea::placeholder { color: var(--ui-field-placeholder); }
+@media (hover: hover) {
+  .input:hover:not(:focus), .textarea:hover:not(:focus) { background: var(--ui-field-hover); }
+}
+/* 焦点环 2px 且不带 offset（focus-field-ring），直接贴在字段边缘 */
 .input:focus, .textarea:focus {
-  background: var(--ui-background);
-  border-color: var(--ui-focus);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-focus) 40%, transparent);
+  background: var(--ui-field-bg);
+  box-shadow: 0 0 0 2px var(--ui-focus), var(--ui-field-shadow);
 }
-.textarea { resize: none; }
+.input:disabled, .textarea:disabled { opacity: 0.5; cursor: not-allowed; }
+.textarea { resize: none; min-height: 38px; }
 
-/* ---------------- Tabs（药丸式，HeroUI tabs solid 变体） ---------------- */
+/* ---------------- Switch（照 heroui v3 switch.css：md 轨道 40×20 r12、拇指 22×16 r8、位移 14px） ---------------- */
+.switch { position: relative; display: inline-flex; align-items: center; gap: 12px; cursor: pointer; user-select: none; }
+.switch input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }
+.switch .ctl {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 20px;
+  border-radius: 12px;
+  background: var(--switch-off);
+  transition: background-color 0.25s ease, box-shadow 0.15s ease;
+}
+.switch .ctl::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 16px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.04), 0 1px 2px rgb(0 0 0 / 0.06), 0 0 1px rgb(0 0 0 / 0.06);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), background-color 0.2s ease, box-shadow 0.2s ease;
+}
+.switch input:checked + .ctl { background: var(--ui-focus); }
+.switch input:checked + .ctl::after {
+  transform: translateX(14px);
+  box-shadow: 0 0 5px rgb(0 0 0 / 0.02), 0 2px 10px rgb(0 0 0 / 0.06), 0 0 1px rgb(0 0 0 / 0.3);
+}
+.switch:hover .ctl { background: color-mix(in srgb, var(--switch-off) 80%, transparent); }
+.switch:hover input:checked + .ctl { background: var(--switch-on-hover); }
+.switch input:focus-visible + .ctl { box-shadow: 0 0 0 2px var(--ui-page), 0 0 0 4px var(--ui-focus); }
+.switch:has(input:disabled) { cursor: not-allowed; }
+.switch input:disabled + .ctl::after {
+  background: color-mix(in srgb, var(--ui-foreground) 20%, transparent);
+  box-shadow: none;
+}
+.switch input:checked:disabled + .ctl::after { background: #fff; opacity: 0.4; }
+
+
+/* ---------------- Tabs（照 heroui v3 packages/styles/components/tabs.css 手写） ---------------- */
+/* 轨道 = --default，滑块 = --segment；list 内衬 4px，tab 高 32px、圆角 24px */
 .tabs {
+  position: relative;
   display: inline-flex;
-  gap: 0;
-  border: none;
-  background: var(--ui-content-background1);
-  border-radius: 999px;
-  padding: 3px;
+  align-items: center;
+  background: var(--ui-segment-track);
+  border-radius: 20px;
+  padding: 4px;
 }
 .tab {
-  padding: 6px 16px;
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  height: 32px;
+  padding: 0 16px;
   border: none;
   background: transparent;
-  border-radius: 999px;
-  font-size: 13px;
+  border-radius: 24px;
+  font-size: 14px;
   font-weight: 500;
   font-family: inherit;
   color: var(--ui-content2);
+  text-align: center;
   cursor: pointer;
-  transition: color 0.15s, background-color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+  outline: none;
+  transition: color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 }
-.tab:hover { color: var(--ui-content1); }
-.tab.active {
-  background: var(--ui-background);
-  color: var(--ui-content1);
-  box-shadow: var(--shadow-sm);
+/* HeroUI 的未选中悬停是整块降低不透明度，不是换颜色 */
+@media (hover: hover) {
+  .tab:not(.active):hover { opacity: 0.7; }
 }
+.tab.active { color: var(--ui-foreground); }
+.tab:focus-visible { box-shadow: 0 0 0 2px var(--ui-segment-track), 0 0 0 4px var(--ui-focus); }
+/* tab 之间的 1px 短竖线：选中项自身与其后一项的分隔线隐藏 */
+.tab + .tab::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 25%;
+  height: 50%;
+  width: 1px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--ui-content3) 25%, transparent);
+  transition: opacity 0.15s ease;
+}
+.tab.active::before,
+.tab.active + .tab::before { opacity: 0; }
+/* 选中背景是独立滑块，切换时位移与宽度一起缓动 */
+.tab-bar {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  height: 32px;
+  border-radius: 24px;
+  background: var(--ui-segment);
+  box-shadow: var(--ui-surface-shadow);
+  transition: transform 0.25s cubic-bezier(0.32, 0.72, 0, 1), width 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+
+/* ---------------- ToggleButtonGroup（照 heroui v3 toggle-button-group.css + toggle-button.css） ---------------- */
+/* 组内各段不圆角，只有首尾倒 24px；段与段之间是 1px × 50% 的前景色细线 */
+.tbg { display: inline-flex; align-items: center; width: fit-content; }
+.tbg-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 24px;
+  background: var(--tbg-bg);
+  color: var(--tbg-fg);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  transition: transform 0.25s ease, background-color 0.1s cubic-bezier(0, 0, 0.2, 1), box-shadow 0.1s cubic-bezier(0, 0, 0.2, 1);
+}
+.tbg .tbg-btn { border-radius: 0; }
+.tbg .tbg-btn:first-child { border-start-start-radius: 24px; border-end-start-radius: 24px; }
+.tbg .tbg-btn:last-child { border-start-end-radius: 24px; border-end-end-radius: 24px; }
+.tbg .tbg-btn + .tbg-btn::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 25%;
+  width: 1px;
+  height: 50%;
+  border-radius: 4px;
+  background: currentColor;
+  opacity: 0.15;
+  pointer-events: none;
+}
+@media (hover: hover) {
+  .tbg-btn:hover { background: var(--tbg-bg-hover); }
+  .tbg-btn.selected:hover { background: var(--tbg-sel-hover); }
+}
+.tbg-btn:active { background: var(--tbg-bg-hover); transform: scale(0.98); }
+/* 组内不缩放，否则整条连体按钮会一起抖 */
+.tbg .tbg-btn:active { transform: none; }
+.tbg-btn.selected { background: var(--tbg-sel); color: var(--tbg-sel-fg); }
+.tbg-btn.selected:active { background: var(--tbg-sel-hover); }
+/* 焦点环走 inset，不外扩才不会把相邻段顶开 */
+.tbg-btn:focus-visible { box-shadow: inset 0 0 0 2px var(--ui-focus); }
+.tbg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ---------------- 布局：顶栏（毛玻璃）+ 侧栏 + 内容 ---------------- */
 .shell { display: flex; flex-direction: column; height: 100%; }
@@ -209,7 +405,7 @@ a { color: var(--ui-focus); text-decoration: none; }
   align-items: center;
   gap: 12px;
   padding: 0 20px;
-  background: color-mix(in srgb, var(--ui-background) 70%, transparent);
+  background: color-mix(in srgb, var(--ui-page) 70%, transparent);
   backdrop-filter: blur(12px) saturate(154%);
   -webkit-backdrop-filter: blur(12px) saturate(154%);
   box-shadow: inset 0 -1px 0 var(--ui-divider);
@@ -225,13 +421,19 @@ a { color: var(--ui-focus); text-decoration: none; }
   width: var(--sidebar-w);
   border-right: 1px solid var(--ui-divider);
   overflow-y: auto;
-  padding: 12px 8px;
+  padding: 12px 4px;
   flex-shrink: 0;
 }
 .content { flex: 1; min-width: 0; overflow-y: auto; padding: 20px 28px; }
 
-/* ---------------- Dropdown / 项目树（药丸行 + 分组 chevron） ---------------- */
-.tree-group { margin-bottom: 4px; }
+/* ---------------- 项目树 = HeroUI ListBox（行）+ Accordion（可折叠分组） ---------------- */
+/* HeroUI v3 没有 sidebar/navbar 组件，官方文档站左栏是 Fumadocs 自带的、不属于 HeroUI；
+   常驻导航列表在 HeroUI 里就是 list-box.css + list-box-section.css + accordion.css 这三份源码 */
+.tree { padding: 4px; }
+.tree-group + .tree-group { margin-top: 4px; }
+/* list-box-section：flex flex-col items-start gap-0（标题与首项之间不留间距） */
+.tree-group { display: flex; flex-direction: column; align-items: stretch; gap: 0; }
+/* section header = 12px / 500 / --muted / 6px 8px 4px；可折叠时它兼任 accordion__trigger */
 .tree-label {
   display: flex;
   align-items: center;
@@ -239,115 +441,187 @@ a { color: var(--ui-focus); text-decoration: none; }
   width: 100%;
   font-size: 12px;
   font-weight: 500;
-  color: var(--ui-content3);
-  padding: 7px 10px 4px;
+  color: var(--ui-section-label);
+  padding: 6px 8px 4px;
   user-select: none;
   background: none;
   border: none;
   font-family: inherit;
   cursor: default;
+  /* accordion__trigger 只过渡 opacity 与 box-shadow，150ms ease-out */
+  transition: opacity 0.15s cubic-bezier(0, 0, 0.2, 1), box-shadow 0.15s cubic-bezier(0, 0, 0.2, 1);
 }
-.tree-label.clickable { cursor: pointer; }
-.tree-label.clickable:hover { color: var(--ui-content1); }
+.tree-label.clickable { cursor: pointer; border-radius: var(--radius-small); }
+@media (hover: hover) {
+  /* accordion__trigger 悬停 = color-mix(--foreground 3%)，且展开状态下不再响应悬停 */
+  .tree-label.clickable:not([aria-expanded='true']):hover {
+    background: color-mix(in oklab, var(--ui-foreground) 3%, transparent);
+    color: var(--ui-content1);
+  }
+}
 .tree-label .spacer { flex: 1; }
+/* accordion__indicator：size-4（16px）shrink-0 text-muted，250ms 过渡，展开时 rotate(-180deg) */
 .tree-label .chev {
-  font-size: 10px;
-  transition: transform 0.15s;
-  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--ui-muted);
+  transition: transform 0.25s cubic-bezier(0, 0, 0.2, 1);
 }
-.tree-label .chev.open { transform: rotate(90deg); }
-.tree-body { overflow: hidden; }
+.tree-label[aria-expanded='true'] .chev { transform: rotate(-180deg); }
 
+/* list-box-item：min-h 36px、padding 6px 8px、子元素 gap 12px、圆角 16px */
 .tree-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 10px;
-  border-radius: var(--radius-small);
-  color: var(--ui-content1);
+  gap: 12px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border-radius: 16px;
+  color: color-mix(in srgb, var(--ui-foreground) 90%, transparent);
   cursor: pointer;
   user-select: none;
-  transition: background-color 0.12s;
+  /* 源码只过渡 transform 与 box-shadow，悬停底色是瞬切的 */
+  transition: transform 0.25s cubic-bezier(0.165, 0.84, 0.44, 1), box-shadow 0.15s cubic-bezier(0, 0, 0.2, 1);
 }
-.tree-item:hover { background: var(--ui-content-background1); }
+.tree-item + .tree-item { margin-top: 4px; }
+@media (hover: hover) {
+  .tree-item:hover { background: var(--ui-default); }
+}
+.tree-item:active { transform: scale(0.98); }
+/* 偏离源码处：HeroUI 选中项只有 5% 主题色淡底 + 右侧勾选指示器，导航侧栏里压不过 hover 灰底，
+   所以保留淡底加深 + 左侧色条 + 主题色文字，且让选中优先于悬停 */
 .tree-item.active {
-  background: var(--ui-content-background2);
-  color: var(--ui-content1);
+  background: color-mix(in srgb, var(--ui-focus) var(--accent-weak), transparent);
+  color: var(--ui-focus);
   font-weight: 500;
+  box-shadow: inset 2px 0 0 var(--ui-focus);
 }
+.tree-item.active:hover { background: color-mix(in srgb, var(--ui-focus) calc(var(--accent-weak) + 6%), transparent); }
 .tree-item .pending { color: var(--ui-content4); font-style: italic; }
 
-/* ---------------- Table（卡片容器 + 分隔线 + 行悬停） ---------------- */
-.card {
-  background: var(--ui-background);
-  border: 1px solid var(--ui-default-200);
-  border-radius: var(--radius-large);
-  box-shadow: var(--shadow-sm);
+/* 分组标题内的轻量图标按钮：HeroUI ghost = 透明底，悬停才上 --default */
+.btn-ghost {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  color: var(--ui-content3);
+  font-size: 15px;
+  line-height: 1;
 }
-html[data-theme='dark'] .card { border-color: var(--ui-default-800); }
+.btn-ghost:hover { background: var(--ui-default); color: var(--ui-content1); }
+
+/* ---------------- Card / Table（照 heroui v3 card.css + table.css） ---------------- */
+/* HeroUI 卡片无边框：p-4、子项 gap 12、圆角 24、只靠 surface 阴影撑出层次 */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--ui-surface);
+  border-radius: var(--radius-large);
+  box-shadow: var(--ui-surface-shadow);
+}
 
 .table-wrap { overflow: auto; }
-.table { width: 100%; border-collapse: collapse; }
+/* 容器是灰底、圆角 20、左右下各 4px 内衬；表头透明所以直接落在灰底上 */
+.table-card { background: var(--ui-surface-secondary); border-radius: 20px; padding: 0 4px 4px; }
+/* 固定列宽需配最小宽度：窄容器下横向滚动，否则名称列会被挤成 0 宽 */
+/* separate 才能让单元格各自带圆角，collapse 下圆角不生效 */
+.table { width: 100%; min-width: 640px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
 .table th, .table td {
   text-align: left;
-  padding: 10px 16px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.table thead th {
-  font-size: 12px;
-  color: var(--ui-content2);
-  font-weight: 600;
-  letter-spacing: 0.02em;
+/* 表头 36px / 12px 中灰，列之间画 16px 短竖线（末列不画）；表体 45px 行高 / 14px 正文色 */
+.table th { position: relative; padding: 10px 16px; height: 36px; font-size: 12px; font-weight: 500; color: var(--ui-content3); }
+.table th::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--ui-divider);
 }
-.table thead { background: var(--ui-content-background1); }
-.table thead tr:first-child th:first-child { border-top-left-radius: var(--radius-large); }
-.table tbody tr { border-top: 1px solid var(--ui-divider); transition: background-color 0.12s; }
-.table tbody tr:hover { background: var(--ui-content-background1); }
-.table td { color: var(--ui-content1); }
+.table th:last-child::after { content: none; }
+.table td {
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--ui-foreground);
+  background: var(--ui-surface);
+  border-bottom: 1px solid var(--ui-table-sep);
+  transition: background-color 0.12s;
+}
+/* 表体四角倒 16px（容器 20px 减 4px 内衬），末行不画分隔线 */
+.table tbody tr:first-child td:first-child { border-top-left-radius: 16px; }
+.table tbody tr:first-child td:last-child { border-top-right-radius: 16px; }
+.table tbody tr:last-child td { border-bottom: none; }
+.table tbody tr:last-child td:first-child { border-bottom-left-radius: 16px; }
+.table tbody tr:last-child td:last-child { border-bottom-right-radius: 16px; }
+.table tbody tr:hover td { background: var(--ui-table-hover); }
+/* 名称列吃满剩余，其余按内容定宽：不设宽的话浏览器会均分，短列会漂到中间 */
+/* 复选框列需容得下 内边距+13px 控件，否则 ellipsis 会渲染成省略号 */
+.col-check { width: 44px; }
+.table th.col-check, .table td:first-child { padding-left: 14px; padding-right: 8px; }
+.col-size { width: 100px; }
+.col-time { width: 170px; }
+.col-acts { width: 170px; text-align: right; }
 
-/* ---------------- Chip / Badge（淡色药丸） ---------------- */
+/* ---------------- Chip / Badge（照 heroui v3 chip.css：圆角 16、px-2 py-0.5、12px/500） ---------------- */
 .badge {
   display: inline-flex;
   align-items: center;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 999px;
+  gap: 2px;
+  width: fit-content;
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 16px;
   font-size: 12px;
+  line-height: 16px;
   font-weight: 500;
-  background: color-mix(in srgb, var(--ui-content2) 12%, transparent);
-  color: var(--ui-content2);
+  background: var(--ui-default);
+  color: var(--ui-content1);
 }
-.badge-primary { background: color-mix(in srgb, var(--ui-focus) 12%, transparent); color: var(--ui-focus); }
-.badge-danger { background: color-mix(in srgb, var(--ui-danger) 14%, transparent); color: var(--ui-danger); }
+.badge-primary { background: var(--ui-accent-soft); color: var(--ui-accent-soft-fg); }
+.badge-danger { background: var(--ui-danger-soft); color: var(--ui-danger-soft-fg); }
 
-/* ---------------- Modal ---------------- */
+/* ---------------- Modal（照 heroui v3 modal.css：dialog p-6 圆角 24 bg-overlay） ---------------- */
 .modal-mask {
   position: fixed;
   inset: 0;
   background: var(--ui-overlay);
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
-  animation: fade-in 0.18s ease-out;
+  animation: fade-in 0.15s cubic-bezier(0, 0, 0.2, 1);
 }
 .modal {
-  background: var(--ui-background);
+  background: var(--ui-surface);
   border-radius: var(--radius-large);
-  box-shadow: var(--shadow-lg);
-  width: min(480px, calc(100vw - 32px));
+  box-shadow: var(--ui-overlay-shadow);
+  width: min(448px, calc(100vw - 32px));
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  padding: 22px;
-  animation: pop-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  padding: 24px;
+  animation: pop-in 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 @keyframes fade-in { from { opacity: 0; } }
-@keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(0.96); } }
-.modal h3 { margin: 0 0 14px; font-size: 16px; font-weight: 600; }
-.modal .modal-body { overflow-y: auto; min-height: 0; }
-.modal .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+/* HeroUI 入场是 zoom-in-105 + 底部 4px 位移（从略大收到原尺寸） */
+@keyframes pop-in { from { opacity: 0; transform: translateY(4px) scale(1.05); } }
+.modal h3 { margin: 0; font-size: 16px; font-weight: 500; color: var(--ui-foreground); }
+.modal .modal-body { overflow-y: auto; min-height: 0; margin-top: 8px; font-size: 14px; line-height: 1.43; color: var(--ui-muted); }
+.modal .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 
 /* ---------------- 引导页 ---------------- */
 .guide {
@@ -357,68 +631,77 @@ html[data-theme='dark'] .card { border-color: var(--ui-default-800); }
   justify-content: center;
   background:
     radial-gradient(60% 50% at 30% 0%, color-mix(in srgb, var(--ui-focus) 7%, transparent) 0%, transparent 100%)
-    var(--ui-default-50);
+    var(--ui-page);
 }
-html[data-theme='dark'] .guide { background-color: #0a0a0b; }
 .guide-card {
   width: min(520px, calc(100vw - 32px));
-  background: var(--ui-background);
-  border: 1px solid var(--ui-default-200);
-  border-radius: 16px;
-  box-shadow: var(--shadow-lg);
+  background: var(--ui-surface);
+  border-radius: var(--radius-large);
+  box-shadow: var(--ui-surface-shadow);
   padding: 32px;
 }
-html[data-theme='dark'] .guide-card { border-color: var(--ui-default-800); }
 .guide-card h2 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
-.guide-card p { color: var(--ui-content2); line-height: 1.65; }
+.guide-card p { color: var(--ui-muted); line-height: 1.65; }
 
-/* ---------------- Toast（浮层 chip） ---------------- */
+/* ---------------- Toast（照 heroui v3 toast.css：surface 卡片 + overlay 阴影 + 圆角 24） ---------------- */
 .toast {
   position: fixed;
-  bottom: 24px;
+  bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--ui-default-800);
-  color: #fff;
-  padding: 9px 18px;
-  border-radius: 999px;
-  box-shadow: var(--shadow-md);
+  background: var(--ui-surface);
+  color: var(--ui-foreground);
+  padding: 12px 16px;
+  border-radius: var(--radius-large);
+  box-shadow: var(--ui-overlay-shadow);
   z-index: 200;
-  font-size: 13px;
+  font-size: 14px;
+  max-width: min(360px, calc(100vw - 32px));
 }
-html[data-theme='dark'] .toast { background: var(--ui-default-200); color: var(--ui-default-900); }
-.toast.error { background: var(--ui-danger); color: #fff; }
+.toast.error { color: var(--ui-danger-soft-fg); }
 
-/* ---------------- Markdown 渲染 ---------------- */
-.md-body { line-height: 1.75; color: var(--ui-content1); word-wrap: break-word; }
-.md-body h1 { font-size: 1.6em; border-bottom: 1px solid var(--ui-divider); padding-bottom: 6px; }
-.md-body h2 { font-size: 1.3em; border-bottom: 1px solid var(--ui-divider); padding-bottom: 4px; }
+/* ---------------- Markdown 渲染（照 heroui v3 typography.css 的 prose 尺度） ---------------- */
+.md-body { font-size: 16px; line-height: 1.75; color: var(--ui-foreground); word-wrap: break-word; }
+/* prose 标题：无下边框，只靠字号 + 600 + tracking-tight 分层 */
+.md-body h1 { font-size: 2.25em; line-height: 1.1; font-weight: 600; letter-spacing: -0.025em; margin: 24px 0 12px; }
+.md-body h2 { font-size: 1.875em; line-height: 1.15; font-weight: 600; letter-spacing: -0.025em; margin: 24px 0 12px; }
+.md-body h3, .md-body h4, .md-body h5, .md-body h6 { font-weight: 600; letter-spacing: -0.025em; margin: 20px 0 10px; }
+.md-body h3 { font-size: 1.5em; }
+.md-body h4 { font-size: 1.25em; }
 .md-body code {
-  background: var(--ui-content-background1);
+  background: var(--ui-default);
   padding: 2px 6px;
-  border-radius: var(--radius-tiny);
-  font-size: 0.92em;
+  border-radius: 6px;
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 0.875em;
+  color: var(--ui-foreground);
 }
-.md-body pre code { display: block; padding: 12px; overflow-x: auto; }
+.md-body pre { margin: 16px 0; }
+.md-body pre code { display: block; padding: 16px; overflow-x: auto; font-size: 14px; line-height: 1.625; border-radius: 12px; }
 .md-body blockquote {
-  border-left: 3px solid var(--ui-default-300);
-  margin: 8px 0;
-  padding: 2px 14px;
-  color: var(--ui-content2);
+  border-left: 4px solid var(--ui-default-200);
+  margin: 16px 0;
+  padding: 0 16px;
+  color: var(--ui-muted);
+  font-style: italic;
 }
+.md-body ul, .md-body ol { margin: 16px 0; padding-left: 24px; }
+.md-body li { margin: 4px 0; }
+.md-body hr { border: none; border-top: 1px solid var(--ui-divider); margin: 32px 0; }
 .md-body table { border-collapse: collapse; }
 .md-body th, .md-body td { border: 1px solid var(--ui-default-200); padding: 5px 12px; }
-.md-body img { max-width: 100%; border-radius: var(--radius-small); }
-.md-body a { text-decoration: underline; text-underline-offset: 2px; }
+.md-body img { max-width: 100%; border-radius: 12px; margin: 16px 0; }
+.md-body strong { font-weight: 600; }
+.md-body a { text-decoration: underline; text-underline-offset: 4px; }
 .md-ref {
   color: var(--ui-focus);
   cursor: pointer;
   border-radius: var(--radius-tiny);
   padding: 0 2px;
 }
-.md-ref:hover { background: color-mix(in srgb, var(--ui-focus) 10%, transparent); }
+.md-ref:hover { background: var(--ui-accent-soft); }
 .md-ref.missing { color: var(--ui-content4); text-decoration: line-through; }
 .md-ref.missing:hover { background: none; }
 
-/* ---------------- 空态 / 骨架 ---------------- */
-.empty { color: var(--ui-content3); text-align: center; padding: 56px 0; }
+/* ---------------- 空态（HeroUI empty-state：text-sm + --muted） ---------------- */
+.empty { color: var(--ui-muted); font-size: 14px; text-align: center; padding: 56px 0; }

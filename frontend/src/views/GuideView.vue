@@ -56,7 +56,7 @@ async function choose() {
         <button class="btn btn-primary" :disabled="busy || !path.trim()" @click="choose">{{ busy ? '初始化…' : '开始使用' }}</button>
       </div>
       <p v-if="error" class="err" style="margin-top:10px">{{ error }}</p>
-      <p class="hint">切换目录不会迁移旧数据；换电脑时拷贝整个工作目录即可还原。</p>
+      <p class="hint">切换目录会把旧目录的记录与文件复制到新目录（同名不覆盖）；换电脑时拷贝整个工作目录即可还原。</p>
     </div>
   </div>
 </template>
@@ -64,6 +64,6 @@ async function choose() {
 <style scoped>
 .theme-corner { position: absolute; top: 20px; right: 20px; }
 .err { color: var(--ui-danger); font-size: 13px; margin: 8px 0 0; }
-.hint { color: var(--ui-content3); font-size: 12px; margin: 14px 0 0; }
-code { background: var(--ui-default-100); padding: 1px 5px; border-radius: 4px; }
+.hint { color: var(--ui-muted); font-size: 12px; margin: 14px 0 0; }
+code { background: var(--ui-default); padding: 1px 5px; border-radius: 4px; }
 </style>

@@ -1,5 +1,6 @@
 export interface Project {
-  id: number
+  // 对外项目标识：自定义项目是目录短码，月度项目是 -YYYYMM
+  id: string
   name: string
   type: 'monthly' | 'custom'
   year_month?: string
@@ -15,7 +16,7 @@ export interface ProjectGroups {
 
 export interface Asset {
   id: number
-  project_id: number
+  project_id: string
   category: 'record' | 'file'
   original_name: string
   stored_name: string
@@ -29,6 +30,11 @@ export interface Settings {
   workspace: string
   workspace_exists: boolean
   needs_select: boolean
+  has_password?: boolean
+  lan_enabled?: boolean
+  port?: number
+  migrated?: number
+  skipped?: number
 }
 
 export interface RefResult {
@@ -36,4 +42,20 @@ export interface RefResult {
   exists: boolean
   matched?: Asset
   candidates: Asset[]
+}
+
+export interface SearchHit {
+  id: number
+  project_id: string
+  project_name: string
+  category: 'record' | 'file'
+  original_name: string
+  ext: string
+  size: number
+  uploaded_at: string
+}
+
+export interface TabItem<T extends string = string> {
+  value: T
+  label: string
 }

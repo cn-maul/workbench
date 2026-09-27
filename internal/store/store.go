@@ -1,12 +1,15 @@
 package store
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -32,6 +35,42 @@ var titleIllegalRe = regexp.MustCompile(`[\\/:*?"<>|]`)
 
 const MaxTitleRunes = 50
 
+// 自定义项目目录名 = <key>_<项目名>；key 是 7 位短码，同时就是对外项目 id。
+// 字母表去掉 0/o/1/l/i，手抄和口述都不容易错。
+const keyAlphabet = "23456789abcdefghjkmnpqrstuvwxyz"
+const keyLen = 7
+
+var projectKeyRe = regexp.MustCompile("^(" + "[" + keyAlphabet + "]{7})_(.+)$")
+var singleKeyRe = regexp.MustCompile("^[" + keyAlphabet + "]{7}$")
+
+// NewProjectKey 生成一个短码；密码学随机，7 位约 2.7e10 空间。
+func NewProjectKey() (string, error) {
+	b := make([]byte, keyLen)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	out := make([]byte, keyLen)
+	for i, v := range b {
+		out[i] = keyAlphabet[int(v)%len(keyAlphabet)]
+	}
+	return string(out), nil
+}
+
+// ValidProjectKey 判断字符串是否是合法短码（用来校验 URL 里的项目 id）。
+func ValidProjectKey(s string) bool { return singleKeyRe.MatchString(s) }
+
+// ParseCustomDir 解析 custom 下的目录名 → (短码, 项目名)。
+func ParseCustomDir(name string) (key, projName string, ok bool) {
+	m := projectKeyRe.FindStringSubmatch(name)
+	if m == nil {
+		return "", "", false
+	}
+	return m[1], m[2], true
+}
+
+// ProjectDirName 拼出 custom 目录名。
+func ProjectDirName(key, name string) string { return key + "_" + name }
+
 // ProjectDir 返回项目根目录。
 func ProjectDir(root string, p *model.Project) (string, error) {
 	switch p.Type {
@@ -42,13 +81,13 @@ func ProjectDir(root string, p *model.Project) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		prefix := fmt.Sprintf("%d_", p.ID)
+		prefix := p.ID + "_"
 		for _, e := range entries {
 			if e.IsDir() && strings.HasPrefix(e.Name(), prefix) {
 				return filepath.Join(root, "custom", e.Name()), nil
 			}
 		}
-		return "", fmt.Errorf("找不到 id=%d 的自定义项目目录", p.ID)
+		return "", fmt.Errorf("找不到项目目录 custom/%s", prefix)
 	}
 	return "", fmt.Errorf("未知项目类型 %q", p.Type)
 }
@@ -189,6 +228,87 @@ func CleanTemps(root string) {
 		}
 		return nil
 	})
+}
+
+// MigrateStats 工作目录迁移统计。
+type MigrateStats struct {
+	Copied  int `json:"copied"`
+	Skipped int `json:"skipped"` // 目标已存在同名文件，保持原样不覆盖
+}
+
+// MigrateWorkspace 把旧目录的 monthly/ 与 custom/ 内容复制到新目录。
+// 只复制、不删除、不覆盖；index.db 是可丢弃缓存，由新目录重建，故不搬。
+func MigrateWorkspace(from, to string) (MigrateStats, error) {
+	var st MigrateStats
+	for _, sub := range []string{"monthly", "custom"} {
+		src := filepath.Join(from, sub)
+		if info, err := os.Stat(src); err != nil || !info.IsDir() {
+			continue
+		}
+		walkErr := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			rel, err := filepath.Rel(from, path)
+			if err != nil {
+				return err
+			}
+			dst := filepath.Join(to, rel)
+			if d.IsDir() {
+				return os.MkdirAll(dst, 0o755)
+			}
+			if !d.Type().IsRegular() || strings.HasPrefix(d.Name(), ".tmp_") {
+				return nil
+			}
+			if _, err := os.Stat(dst); err == nil {
+				st.Skipped++
+				return nil
+			}
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			f, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			_, cpErr := AtomicWrite(dst, f)
+			f.Close()
+			if cpErr != nil {
+				return cpErr
+			}
+			// 保留修改时间：清单缺失时 Rebuild 用 mtime 兜底推断上传时间与排序。
+			os.Chtimes(dst, info.ModTime(), info.ModTime())
+			st.Copied++
+			return nil
+		})
+		if walkErr != nil {
+			return st, fmt.Errorf("复制 %s 失败: %w", src, walkErr)
+		}
+	}
+	return st, nil
+}
+
+// pathFold 路径比较前的归一化：Windows（NTFS/FAT32）路径不区分大小写，
+// 折叠成小写再比；其他平台路径大小写敏感，原样返回。
+func pathFold(s string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(s)
+	}
+	return s
+}
+
+// SamePath 判断两个路径是否指向同一目录（Windows 下大小写不敏感）。
+func SamePath(a, b string) bool {
+	return pathFold(filepath.Clean(a)) == pathFold(filepath.Clean(b))
+}
+
+// Nested 报告 a 是否与 b 相同或位于 b 之内（迁移会造成自我递归复制）。
+// Windows 上大小写不敏感：D:\ws 与 D:\WS 必须判为同一目录，
+// 否则会把「换大小写重选同一目录」当成迁移，触发自我复制并删掉正在使用的 index.db。
+func Nested(a, b string) bool {
+	rel, err := filepath.Rel(pathFold(filepath.Clean(b)), pathFold(filepath.Clean(a)))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // FallbackMeta 清单缺失时按存储名推断原始名。

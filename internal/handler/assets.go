@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"archive/zip"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -84,17 +86,20 @@ func (s *Server) HandleUpload(c *gin.Context) {
 		return
 	}
 
-	manifest := store.LoadManifest(projDir)
 	uploadedAt := time.Now().Format(time.RFC3339)
-	manifest[stored] = store.ManifestEntry{OriginalName: original, UploadedAt: uploadedAt}
-	if err := store.SaveManifest(projDir, manifest); err != nil {
+	err = store.MutateManifest(projDir, func(m store.Manifest) bool {
+		m[stored] = store.ManifestEntry{OriginalName: original, UploadedAt: uploadedAt}
+		return true
+	})
+	if err != nil {
 		os.Remove(final)
 		fail(c, 500, err.Error())
 		return
 	}
 
 	a := &model.Asset{
-		ProjectID: p.ID, Category: category, OriginalName: original, StoredName: stored,
+		ProjectRowID: p.RowID, ProjectID: p.ID,
+		Category: category, OriginalName: original, StoredName: stored,
 		StoredPath: store.RelPath(s.Cfg.Workspace, projDir, category, stored),
 		Ext:        strings.ToLower(strings.TrimPrefix(filepath.Ext(stored), ".")),
 		Size:       size, UploadedAt: uploadedAt,
@@ -167,16 +172,19 @@ func (s *Server) HandleBlankRecord(c *gin.Context) {
 		return
 	}
 
-	manifest := store.LoadManifest(projDir)
 	uploadedAt := time.Now().Format(time.RFC3339)
-	manifest[stored] = store.ManifestEntry{OriginalName: original, UploadedAt: uploadedAt}
-	if err := store.SaveManifest(projDir, manifest); err != nil {
+	err = store.MutateManifest(projDir, func(m store.Manifest) bool {
+		m[stored] = store.ManifestEntry{OriginalName: original, UploadedAt: uploadedAt}
+		return true
+	})
+	if err != nil {
 		os.Remove(final)
 		fail(c, 500, err.Error())
 		return
 	}
 	a := &model.Asset{
-		ProjectID: p.ID, Category: model.CatRecord, OriginalName: original, StoredName: stored,
+		ProjectRowID: p.RowID, ProjectID: p.ID,
+		Category: model.CatRecord, OriginalName: original, StoredName: stored,
 		StoredPath: store.RelPath(s.Cfg.Workspace, projDir, model.CatRecord, stored),
 		Ext:        "md", Size: int64(len(content)), UploadedAt: uploadedAt,
 	}
@@ -225,6 +233,12 @@ func (s *Server) HandleDownload(c *gin.Context) {
 	}
 	if _, err := os.Stat(abs); err != nil {
 		fail(c, 404, "文件已不存在")
+		return
+	}
+	if c.Query("inline") == "1" {
+		// 浏览器内预览（图片/PDF 浮层用）：不强制下载，Content-Type 由文件扩展名推断
+		c.Header("Content-Disposition", `inline; filename*=UTF-8''`+url.PathEscape(a.OriginalName))
+		c.File(abs)
 		return
 	}
 	extra := `attachment; filename*=UTF-8''` + url.PathEscape(a.OriginalName)
@@ -305,4 +319,169 @@ func statOf(path string) int64 {
 		return st.Size()
 	}
 	return -1
+}
+
+// parseBatchIDs 解析 {"ids":[...]}，校验非空。
+func parseBatchIDs(c *gin.Context) ([]int64, bool) {
+	var req struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.IDs) == 0 {
+		fail(c, 400, `需要 JSON: {"ids": [...]}`)
+		return nil, false
+	}
+	return req.IDs, true
+}
+
+// HandleBatchDelete 批量删除资产：磁盘文件 + 清单条目 + 缓存行。
+func (s *Server) HandleBatchDelete(c *gin.Context) {
+	ids, ok := parseBatchIDs(c)
+	if !ok {
+		return
+	}
+	assets, err := s.DB.GetAssetsByIds(ids)
+	if err != nil {
+		fail(c, 500, err.Error())
+		return
+	}
+	byProj := map[int64][]*model.Asset{}
+	for _, a := range assets {
+		byProj[a.ProjectRowID] = append(byProj[a.ProjectRowID], a)
+	}
+	deleted := 0
+	for rowID, list := range byProj {
+		p, err := s.DB.GetProjectByRowID(rowID)
+		if err != nil {
+			continue // 项目已不存在：缓存行照删
+		}
+		projDir, err := s.projectDir(p)
+		if err != nil {
+			continue
+		}
+		for _, a := range list {
+			if abs, err := s.absPath(a); err == nil {
+				if err := os.Remove(abs); err != nil && !errors.Is(err, os.ErrNotExist) {
+					fail(c, 500, "删除 "+a.OriginalName+" 失败: "+err.Error())
+					return
+				}
+			}
+			deleted++
+		}
+		if err := store.MutateManifest(projDir, func(m store.Manifest) bool {
+			for _, a := range list {
+				delete(m, a.StoredName)
+			}
+			return true
+		}); err != nil {
+			fail(c, 500, err.Error())
+			return
+		}
+	}
+	realIDs := make([]int64, 0, len(assets))
+	for _, a := range assets {
+		realIDs = append(realIDs, a.ID)
+	}
+	if err := s.DB.DeleteAssets(realIDs); err != nil {
+		fail(c, 500, err.Error())
+		return
+	}
+	c.JSON(200, gin.H{"deleted": deleted})
+}
+
+// HandleBatchDownload 批量下载：打包为 zip 流式返回。
+func (s *Server) HandleBatchDownload(c *gin.Context) {
+	var req struct {
+		IDs []int64 `json:"ids"`
+	}
+	ids := []int64{}
+	if err := c.ShouldBindJSON(&req); err == nil {
+		ids = req.IDs
+	} else {
+		for _, v := range strings.Split(c.Query("ids"), ",") {
+			if n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil && n > 0 {
+				ids = append(ids, n)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		fail(c, 400, "未选择资产")
+		return
+	}
+	assets, err := s.DB.GetAssetsByIds(ids)
+	if err != nil {
+		fail(c, 500, err.Error())
+		return
+	}
+	if len(assets) == 0 {
+		fail(c, 404, "资产不存在")
+		return
+	}
+
+	extra := `attachment; filename*=UTF-8''` + url.PathEscape("工作台下载.zip")
+	c.Header("Content-Disposition", extra)
+	c.Header("Content-Type", "application/zip")
+	c.Status(http.StatusOK)
+
+	zw := zip.NewWriter(c.Writer)
+	defer zw.Close()
+	// taken 记录 zip 内已占用的全部条目名（含自动加的 _N），
+	// 排重循环从 _2 起线性找空位，生成的新名字也参与排重，任意多个同名都能落到唯一条目。
+	taken := map[string]bool{}
+	for _, a := range assets {
+		abs, err := s.absPath(a)
+		if err != nil {
+			continue
+		}
+		f, err := os.Open(abs)
+		if err != nil {
+			continue // 磁盘缺失跳过
+		}
+		// 清单可信但条目名不可信：压平为纯文件名，防手改清单造成 Zip Slip。
+		base := filepath.Base(strings.ReplaceAll(a.OriginalName, "\\", "/"))
+		ext := filepath.Ext(base)
+		stem := strings.TrimSuffix(base, ext)
+		name := base
+		for n := 2; taken[name]; n++ {
+			name = fmt.Sprintf("%s_%d%s", stem, n, ext)
+		}
+		taken[name] = true
+		w, err := zw.Create(name)
+		if err != nil {
+			f.Close()
+			return
+		}
+		io.Copy(w, f)
+		f.Close()
+	}
+}
+
+// HandleSearch 文件名搜索：?q=关键词 [&project=真实或虚拟id]
+func (s *Server) HandleSearch(c *gin.Context) {
+	q := strings.TrimSpace(c.Query("q"))
+	if q == "" {
+		c.JSON(200, []model.SearchHit{})
+		return
+	}
+	var pid int64
+	if rp := c.Query("project"); rp != "" {
+		p, pending, err := s.resolveProject(rp)
+		if err != nil {
+			c.JSON(200, []model.SearchHit{})
+			return
+		}
+		if pending { // 尚无任何内容的虚拟月度项目没有可搜资产
+			c.JSON(200, []model.SearchHit{})
+			return
+		}
+		pid = p.RowID
+	}
+	hits, err := s.DB.SearchAssets(q, pid)
+	if err != nil {
+		fail(c, 500, err.Error())
+		return
+	}
+	if hits == nil {
+		hits = []model.SearchHit{}
+	}
+	c.JSON(200, hits)
 }

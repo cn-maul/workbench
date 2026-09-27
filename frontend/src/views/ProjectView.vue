@@ -1,25 +1,36 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { api, formatSize, type ApiError } from '../api'
-import type { Asset, Project } from '../types'
+import { api, formatSize, isPreviewable } from '../api'
+import type { Asset, Project, TabItem } from '../types'
 import Modal from '../components/Modal.vue'
-import RecordOverlay from '../components/RecordOverlay.vue'
-import { toast } from '../useToast'
-import { bumpTree } from '../bus'
+import Tabs from '../components/Tabs.vue'
+import FileIcon from '../components/FileIcon.vue'
+import FilePreview from '../components/FilePreview.vue'
+import { errToast, toast } from '../useToast'
+import { bumpTree, treeVersion } from '../bus'
+
+// markdown-it/dompurify 只被记录浮层用到：懒加载，避免押进首屏 chunk
+const RecordOverlay = defineAsyncComponent(() => import('../components/RecordOverlay.vue'))
 
 const route = useRoute()
 
 const project = ref<Project | null>(null)
 const pending = ref(false)
 const tab = ref<'record' | 'file'>('record')
-const assets = ref<Asset[]>([])
+const tabs: TabItem<'record' | 'file'>[] = [{ value: 'record', label: '记录库' }, { value: 'file', label: '文件库' }]
+const assets = shallowRef<Asset[]>([])
 const loading = ref(false)
 const uploadInput = ref<HTMLInputElement | null>(null)
 const showBlank = ref(false)
 const blankTitle = ref('')
 const overlayAsset = ref<Asset | null>(null)
+const previewAsset = ref<Asset | null>(null)
 const overlayEdit = ref(false)
+
+const selected = ref(new Set<number>())
+const showBatchDelete = ref(false)
+const batching = ref(false)
 
 const page = ref(1)
 const pageSize = ref(Number(localStorage.getItem('wb-pagesize')) || 20)
@@ -49,20 +60,74 @@ async function load() {
   loading.value = true
   try {
     const id = route.params.id as string
-    const pr = await api.getProject(id)
+    const [pr, list] = await Promise.all([api.getProject(id), api.listAssets(id, tab.value)])
     project.value = pr.project
     pending.value = pr.pending
-    assets.value = await api.listAssets(pr.project.id, tab.value)
+    assets.value = list
   } catch (e) {
-    toast((e as ApiError).message, true)
+    errToast(e)
   } finally {
     loading.value = false
   }
 }
 
-watch(() => [route.params.id, tab.value], load, { immediate: true })
+async function reloadAssets() {
+  try {
+    assets.value = await api.listAssets(route.params.id as string, tab.value)
+  } catch (e) {
+    errToast(e)
+  }
+}
 
-const projectId = computed(() => String(project.value?.id ?? route.params.id))
+watch(() => route.params.id, load, { immediate: true })
+let skipNextReload = false
+watch([tab, treeVersion], () => {
+  if (route.name !== 'project') return
+  selected.value = new Set()
+  if (skipNextReload) { skipNextReload = false; return }
+  reloadAssets()
+})
+
+const projectId = computed(() => project.value?.id ?? String(route.params.id))
+
+const selectedIds = computed(() => [...selected.value])
+const pageAllSelected = computed(() =>
+  pagedAssets.value.length > 0 && pagedAssets.value.every(a => selected.value.has(a.id)))
+const pageSomeSelected = computed(() =>
+  !pageAllSelected.value && pagedAssets.value.some(a => selected.value.has(a.id)))
+
+function toggleAsset(id: number) {
+  const s = new Set(selected.value)
+  if (s.has(id)) s.delete(id); else s.add(id)
+  selected.value = s
+}
+
+function togglePage() {
+  const s = new Set(selected.value)
+  if (pageAllSelected.value) pagedAssets.value.forEach(a => s.delete(a.id))
+  else pagedAssets.value.forEach(a => s.add(a.id))
+  selected.value = s
+}
+
+function batchDownload() {
+  window.open(api.batchDownloadUrl(selectedIds.value), '_blank')
+}
+
+async function doBatchDelete() {
+  if (batching.value) return
+  batching.value = true
+  try {
+    const r = await api.batchDelete(selectedIds.value)
+    showBatchDelete.value = false
+    selected.value = new Set()
+    toast(`已删除 ${r.deleted} 项`)
+    bumpTree() // treeVersion 变化会触发列表重载
+  } catch (e) {
+    errToast(e)
+  } finally {
+    batching.value = false
+  }
+}
 
 async function doUpload(files: FileList | null) {
   if (!files || !files.length) return
@@ -70,13 +135,14 @@ async function doUpload(files: FileList | null) {
     const list = Array.from(files)
     const uploaded = await api.uploadFiles(projectId.value, tab.value, list)
     toast(`已上传 ${uploaded.length} 个文件`)
-    if (tab.value === 'record' && uploaded.length) {
+    assets.value = [...uploaded, ...assets.value] // 新资产在列表最前，免整表重载
+    if (pending.value) { skipNextReload = true; bumpTree() } // 空项目首次有内容：刷新项目列表
+    if (tab.value === 'record') {
       const firstMd = uploaded.find(a => a.ext === 'md')
-      if (firstMd) { await load(); openOverlay(firstMd, false); return }
+      if (firstMd) { openOverlay(firstMd, false); return }
     }
-    await load()
   } catch (e) {
-    toast((e as ApiError).message, true)
+    errToast(e)
   }
 }
 
@@ -87,13 +153,13 @@ async function createBlank() {
     const a = await api.createBlank(projectId.value, title)
     showBlank.value = false
     blankTitle.value = ''
-    if (tab.value !== 'record') tab.value = 'record'
-    else await load()
-    bumpTree()
+    if (tab.value !== 'record') tab.value = 'record' // 切 tab 触发重载，拿到含新记录的列表
+    else assets.value = [a, ...assets.value]
+    if (pending.value) { skipNextReload = true; bumpTree() } // 本地已前插，树刷新时跳过重复重载
     overlayEdit.value = true
     overlayAsset.value = a
   } catch (e) {
-    toast((e as ApiError).message, true)
+    errToast(e)
   }
 }
 
@@ -117,24 +183,31 @@ function onOverlaySaved() {
       <input ref="uploadInput" type="file" multiple hidden @change="doUpload($event.target.files); ($event.target as HTMLInputElement).value = ''" />
     </div>
 
-    <div class="tabs" style="margin:12px 0">
-      <button class="tab" :class="{ active: tab === 'record' }" @click="tab = 'record'">记录库</button>
-      <button class="tab" :class="{ active: tab === 'file' }" @click="tab = 'file'">文件库</button>
-    </div>
+    <Tabs v-model="tab" :items="tabs" style="margin:12px 0" />
 
     <div v-if="loading" class="empty">加载中…</div>
     <div v-else-if="!assets.length" class="empty">{{ tab === 'record' ? '还没有记录，点右上「新建记录」或上传 .md' : '还没有文件，点右上「上传文件」' }}</div>
-    <div v-else class="card table-wrap">
+    <div v-else class="table-card table-wrap">
       <table class="table">
-        <thead><tr><th>名称</th><th>大小</th><th>时间</th><th style="width:160px"></th></tr></thead>
+        <thead>
+          <tr>
+            <th class="col-check"><input type="checkbox" class="ck" :checked="pageAllSelected" :indeterminate="pageSomeSelected" @change="togglePage" /></th>
+            <th>名称</th><th class="col-size">大小</th><th class="col-time">时间</th><th class="col-acts"></th>
+          </tr>
+        </thead>
         <tbody>
-          <tr v-for="a in pagedAssets" :key="a.id">
-            <td>{{ a.original_name }}</td>
+          <tr v-for="a in pagedAssets" :key="a.id" :class="{ picked: selected.has(a.id) }">
+            <td><input type="checkbox" class="ck" :checked="selected.has(a.id)" @change="toggleAsset(a.id)" /></td>
+            <td>
+              <FileIcon :ext="a.ext" :category="a.category" />
+              <a v-if="a.category === 'file' && isPreviewable(a.ext)" class="pname" title="点击预览" @click="previewAsset = a">{{ a.original_name }}</a>
+              <a v-else-if="a.category === 'record'" class="pname" title="点击查看" @click="openOverlay(a, false)">{{ a.original_name }}</a>
+              <template v-else>{{ a.original_name }}</template>
+            </td>
             <td>{{ formatSize(a.size) }}</td>
             <td>{{ a.uploaded_at.slice(0, 16).replace('T', ' ') }}</td>
-            <td style="text-align:right">
+            <td class="col-acts">
               <template v-if="a.category === 'record'">
-                <button class="btn btn-sm" @click="openOverlay(a, false)">查看</button>
                 <button class="btn btn-sm" @click="openOverlay(a, true)">编辑</button>
                 <a class="btn btn-sm" :href="api.downloadUrl(a.id)" style="margin-left:6px">下载</a>
               </template>
@@ -143,6 +216,13 @@ function onOverlaySaved() {
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div v-if="selected.size" class="batch-bar">
+      <span>已选 {{ selected.size }} 项</span>
+      <button class="btn btn-sm" :disabled="batching" @click="batchDownload">批量下载</button>
+      <button class="btn btn-sm btn-danger" :disabled="batching" @click="showBatchDelete = true">批量删除</button>
+      <button class="btn btn-sm" :disabled="batching" @click="selected = new Set()">取消</button>
     </div>
 
     <div v-if="assets.length && !loading" class="pager">
@@ -168,14 +248,67 @@ function onOverlaySaved() {
     </template>
   </Modal>
 
+  <Modal v-if="showBatchDelete" title="批量删除" @close="showBatchDelete = false">
+    <p style="margin:0">确定删除选中的 {{ selected.size }} 项？文件将从磁盘一并删除，无法恢复。</p>
+    <template #foot>
+      <button class="btn" @click="showBatchDelete = false">取消</button>
+      <button class="btn btn-danger" :disabled="batching" @click="doBatchDelete">删除</button>
+    </template>
+  </Modal>
+
   <RecordOverlay v-if="overlayAsset" :key="overlayAsset.id" :asset="overlayAsset" :project-id="projectId" :start-editing="overlayEdit"
     @close="overlayAsset = null" @saved="onOverlaySaved" />
+
+  <FilePreview v-if="previewAsset" :key="previewAsset.id" :asset="previewAsset" @close="previewAsset = null" />
 </template>
 
 <style scoped>
 .head { display: flex; align-items: center; gap: 10px; }
-.pager { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 13px; color: var(--ui-content2); }
-.pager .sel { width: auto; padding: 3px 8px; display: inline-block; }
-.pager .jump { width: 56px; display: inline-block; padding: 3px 8px; text-align: center; }
+.pager { display: flex; flex-wrap: wrap; align-items: center; column-gap: 10px; row-gap: 8px; margin-top: 12px; font-size: 13px; color: var(--ui-content2); white-space: nowrap; }
+.pager .sel { width: auto; height: 32px; padding: 0 8px; display: inline-block; }
+.pager .jump { width: 56px; height: 28px; padding: 0 8px; display: inline-block; text-align: center; }
+.pname { cursor: pointer; color: var(--ui-focus); }
+.pname:hover { text-decoration: underline; }
 .pager label { display: inline-flex; align-items: center; gap: 6px; }
+/* HeroUI checkbox__control：16px、圆角 6、bg-field + shadow-field，选中铺满 accent */
+.ck {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  vertical-align: middle;
+  border-radius: 6px;
+  background: var(--ui-field-bg);
+  box-shadow: var(--ui-field-shadow);
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s cubic-bezier(0, 0, 0.2, 1);
+}
+.ck:checked, .ck:indeterminate { background: var(--ui-focus); }
+@media (hover: hover) {
+  .ck:checked:hover, .ck:indeterminate:hover { background: var(--ui-accent-hover); }
+}
+.ck:focus-visible { box-shadow: 0 0 0 2px var(--ui-page), 0 0 0 4px var(--ui-focus); }
+.ck:checked::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: center / 12px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13l4 4 10-10'/%3E%3C/svg%3E");
+}
+.ck:indeterminate::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 7px;
+  height: 2px;
+  border-radius: 1px;
+  background: #fff;
+}
+/* 选中行 = accent-soft（HeroUI table 行选中同款） */
+tr.picked td { background: color-mix(in oklab, var(--ui-focus) 15%, var(--ui-surface)); }
+.batch-bar { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 16px; font-size: 13px;
+  background: var(--ui-surface); border-radius: var(--radius-large); box-shadow: var(--ui-surface-shadow); }
 </style>

@@ -1,5 +1,6 @@
 # 构建产物与运行时文件（exe 走 Release 附件，不入库）
 工作台.exe
+Workbench.exe
 internal/web/dist/*
 !internal/web/dist/.gitkeep
 workbench.json
@@ -13,3 +14,7 @@ frontend/.vite/
 # 系统杂项
 Thumbs.db
 .DS_Store
+
+# 工作台内部数据与备份文件
+.workbuddy/
+Workbench.exe~

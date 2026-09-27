@@ -3,9 +3,10 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"sync"
 
-	json "encoding/json/v2"
 	"encoding/json/jsontext"
+	json "encoding/json/v2"
 )
 
 type ManifestEntry struct {
@@ -33,4 +34,18 @@ func SaveManifest(projDir string, m Manifest) error {
 		return err
 	}
 	return AtomicWriteBytes(filepath.Join(projDir, "assets.json"), b)
+}
+
+// manifestMu 串行化清单的读-改-写，避免并发更新互相覆盖。
+var manifestMu sync.Mutex
+
+// MutateManifest 在互斥锁内完成 读→fn 修改→写回（仅当 fn 返回 dirty 才写）。
+func MutateManifest(projDir string, fn func(m Manifest) bool) error {
+	manifestMu.Lock()
+	defer manifestMu.Unlock()
+	m := LoadManifest(projDir)
+	if !fn(m) {
+		return nil
+	}
+	return SaveManifest(projDir, m)
 }

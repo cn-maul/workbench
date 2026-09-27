@@ -27,26 +27,39 @@ func New(s *handler.Server, port int) *gin.Engine {
 	})
 
 	api := r.Group("/api/v1")
-	api.GET("/settings", s.HandleGetSettings)
-	api.PUT("/settings", s.HandlePutSettings)
-	api.GET("/pick-folder", s.HandlePickFolder)
+	api.GET("/auth/status", s.HandleAuthStatus)
+	api.POST("/auth/login", s.HandleLogin)
+	api.POST("/auth/logout", s.HandleLogout)
 
-	auth := api.Group("", s.RequireWorkspace())
+	need := api.Group("", s.RequireAuth())
 	{
+		need.GET("/settings", s.HandleGetSettings)
+		need.PUT("/settings", s.HandlePutSettings)
+		need.GET("/pick-folder", s.HandlePickFolder)
+	}
+
+	auth := api.Group("", s.RequireAuth(), s.RequireWorkspace())
+	{
+		auth.PUT("/access", s.HandlePutAccess)
 		auth.GET("/projects", s.HandleListProjects)
 		auth.POST("/projects", s.HandleCreateProject)
 		auth.GET("/projects/current-monthly", s.HandleCurrentMonthly)
 		auth.GET("/projects/:id", s.HandleGetProject)
+		auth.PUT("/projects/:id", s.HandleRenameProject)
+		auth.DELETE("/projects/:id", s.HandleDeleteProject)
 		auth.GET("/projects/:id/assets", s.HandleListAssets)
 		auth.POST("/projects/:id/upload", s.HandleUpload)
 		auth.POST("/projects/:id/records/blank", s.HandleBlankRecord)
 		auth.GET("/assets/:id/download", s.HandleDownload)
+		auth.GET("/batch/download", s.HandleBatchDownload)
+		auth.POST("/batch/delete", s.HandleBatchDelete)
 		auth.GET("/assets/:id/text", s.HandleGetText)
 		auth.PUT("/assets/:id/text", s.HandlePutText)
 		auth.GET("/records/:id/references", s.HandleReferences)
+		auth.GET("/search", s.HandleSearch)
 	}
 
- Dist := web.Dist()
+	Dist := web.Dist()
 	r.NoRoute(func(c *gin.Context) {
 		p := path.Clean("/" + strings.TrimPrefix(c.Request.URL.Path, "/"))
 		if strings.HasPrefix(p, "/api/") {
@@ -68,13 +81,13 @@ func New(s *handler.Server, port int) *gin.Engine {
 }
 
 var mimeByExt = map[string]string{
-	".html": "text/html; charset=utf-8",
-	".js":   "text/javascript; charset=utf-8",
-	".css":  "text/css; charset=utf-8",
-	".json": "application/json; charset=utf-8",
-	".svg":  "image/svg+xml",
-	".png":  "image/png",
-	".ico":  "image/x-icon",
+	".html":  "text/html; charset=utf-8",
+	".js":    "text/javascript; charset=utf-8",
+	".css":   "text/css; charset=utf-8",
+	".json":  "application/json; charset=utf-8",
+	".svg":   "image/svg+xml",
+	".png":   "image/png",
+	".ico":   "image/x-icon",
 	".woff2": "font/woff2",
 }
 
@@ -84,6 +97,9 @@ func serveFS(c *gin.Context, name string, _ int64, fsys fs.FS) {
 	}
 	if name == "index.html" {
 		c.Header("Cache-Control", "no-cache")
+	} else if strings.HasPrefix(name, "assets/") {
+		// vite 产物文件名带内容 hash，可永久缓存
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
 	}
 	f, err := fsys.Open(name)
 	if err != nil {

@@ -1,4 +1,4 @@
-import type { Asset, Project, ProjectGroups, RefResult, Settings } from './types'
+import type { Asset, Project, ProjectGroups, RefResult, SearchHit, Settings } from './types'
 
 const BASE = '/api/v1'
 
@@ -16,11 +16,24 @@ export function setWorkspaceRequiredHandler(fn: () => void) {
   onWorkspaceRequired = fn
 }
 
+// 401 时全局回调（App 挂载后注册，用于弹出登录层）
+let onUnauthorized: (() => void) | null = null
+export function setUnauthorizedHandler(fn: () => void) {
+  onUnauthorized = fn
+}
+export function triggerUnauthorized() {
+  onUnauthorized?.()
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(BASE + path, init)
   if (resp.status === 428) {
     onWorkspaceRequired?.()
     throw new ApiError(428, '请先选择工作目录')
+  }
+  if (resp.status === 401 && !path.startsWith('/auth/')) {
+    onUnauthorized?.()
+    throw new ApiError(401, '需要密码')
   }
   if (!resp.ok) {
     let msg = resp.statusText
@@ -39,17 +52,25 @@ function json(body: unknown): RequestInit {
 }
 
 export const api = {
+  authStatus: () => request<{ has_password: boolean; authorized: boolean }>('/auth/status'),
+  login: (password: string) => request<{ ok: boolean }>('/auth/login', { method: 'POST', ...json({ password }) }),
+  logout: () => request<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
+  putAccess: (password: string | null, lan: boolean | null) =>
+    request<{ has_password: boolean; lan_enabled: boolean }>('/access', { method: 'PUT', ...json({ password, lan }) }),
   getSettings: () => request<Settings>('/settings'),
   putSettings: (workspace: string) => request<Settings>('/settings', { method: 'PUT', ...json({ workspace }) }),
   pickFolder: () => request<{ path: string }>('/pick-folder'),
 
   listProjects: () => request<ProjectGroups>('/projects'),
-  getProject: (id: number | string) => request<{ project: Project; pending: boolean }>(`/projects/${id}`),
+  getProject: (id: string) => request<{ project: Project; pending: boolean }>(`/projects/${id}`),
   createProject: (name: string) => request<Project>('/projects', { method: 'POST', ...json({ name }) }),
-  listAssets: (projectId: number | string, category?: 'record' | 'file') =>
+  renameProject: (id: string, name: string) => request<Project>(`/projects/${id}`, { method: 'PUT', ...json({ name }) }),
+  deleteProject: (id: string) => request<void>(`/projects/${id}`, { method: 'DELETE' }),
+  listAssets: (projectId: string, category?: 'record' | 'file') =>
     request<Asset[]>(`/projects/${projectId}/assets${category ? `?category=${category}` : ''}`),
 
-  async uploadFiles(projectId: number | string, category: string, files: File[]): Promise<Asset[]> {
+  // 保持串行：同名文件的排重依赖前一个已重命名落盘，并行会撞名
+  async uploadFiles(projectId: string, category: string, files: File[]): Promise<Asset[]> {
     const out: Asset[] = []
     for (const f of files) {
       const fd = new FormData()
@@ -59,7 +80,7 @@ export const api = {
     }
     return out
   },
-  createBlank: (projectId: number | string, title: string) =>
+  createBlank: (projectId: string, title: string) =>
     request<Asset>(`/projects/${projectId}/records/blank`, { method: 'POST', ...json({ title }) }),
 
   getText: async (assetId: number): Promise<{ text: string; size: number }> => {
@@ -76,7 +97,19 @@ export const api = {
 
   getReferences: (recordId: number) => request<RefResult[]>(`/records/${recordId}/references`),
 
-  downloadUrl: (assetId: number) => `${BASE}/assets/${assetId}/download`,
+  batchDelete: (ids: number[]) => request<{ deleted: number }>('/batch/delete', { method: 'POST', ...json({ ids }) }),
+  batchDownloadUrl: (ids: number[]) => `${BASE}/batch/download?ids=${ids.join(',')}`,
+
+  search: (q: string, project?: string) =>
+    request<SearchHit[]>(`/search?q=${encodeURIComponent(q)}${project ? `&project=${encodeURIComponent(project)}` : ''}`),
+
+  downloadUrl: (assetId: number, inline = false) => `${BASE}/assets/${assetId}/download${inline ? '?inline=1' : ''}`,
+}
+
+// 图片与 PDF 可在浮层内预览，其余类型维持下载打开
+const PREVIEWABLE = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'pdf']
+export function isPreviewable(ext: string): boolean {
+  return PREVIEWABLE.includes(ext.toLowerCase().replace(/^\./, ''))
 }
 
 export function formatSize(n: number): string {

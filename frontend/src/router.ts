@@ -8,8 +8,10 @@ const router = createRouter({
   routes: [
     { path: '/', component: ShellView, children: [
       { path: '', redirect: () => {
+          // 月度项目的对外 id 与后端 model.MonthlyKey 同规则：'-' + YYYYMM
           const d = new Date()
-          return { name: 'project', params: { id: String(-(d.getFullYear() * 100 + d.getMonth() + 1)) } }
+          const ym = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`
+          return { name: 'project', params: { id: `-${ym}` } }
         } },
       { path: 'p/:id', name: 'project', component: ProjectView },
       { path: 'settings', name: 'settings', component: SettingsView },

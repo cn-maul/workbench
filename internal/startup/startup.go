@@ -30,8 +30,12 @@ func AcquirePort(cfg *config.Config) (net.Listener, int, error) {
 		return nil, p, ErrAlreadyRunning
 	}
 	port := DefaultPort
+	bind := "127.0.0.1"
+	if cfg.Lan {
+		bind = "0.0.0.0" // 局域网访问（Load 已保证只有设了密码才可能开启）
+	}
 	for i := 0; i < maxPortTries; i, port = i+1, port+1 {
-		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", bind, port))
 		if err == nil {
 			slog.Info("端口就绪", "port", port)
 			cfg.SavePort(port)
@@ -95,6 +99,5 @@ func InitWorkspace(cfg *config.Config) *index.DB {
 		slog.Error("索引重建失败", "err", err)
 		os.Exit(1)
 	}
-	_ = db.SetSetting("workspace", cfg.Workspace)
 	return db
 }

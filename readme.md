@@ -40,6 +40,7 @@
 - 月度项目按 `年/月` 组织，命名如 `2026-09`。
 - **月度项目延迟落盘**：当月没写入任何内容前，磁盘上不存在该目录。左侧树里的"当前月度"是虚拟节点，第一次新建记录/上传时才真正建目录。
 - 自定义项目命名自由，如 `2026年安全检查`。
+- **项目身份 = 目录名里的短码，不是数据库自增 id**。自定义项目目录固定为 `<7位短码>_<项目名>`，短码由 `crypto/rand` 从去掉 `0/o/1/l/i` 的 31 字母表生成（约 2.7e10 空间），同时就是 API 与 URL 里的 `id`；月度项目的 `id` 是 `-YYYYMM`（如 `-202609`，无需落盘即可寻址）。SQLite 的 `INTEGER PRIMARY KEY` 退化为内部外键，重建索引时随便变，绝不会再出现「自增占了 1，自定义项目撞主键」这类分配冲突。
 - 项目里只有两个 Tab：记录库、文件库。
 - 项目没有状态、没有负责人、没有截止日期、没有优先级。
 
@@ -49,7 +50,7 @@
 - 上传 `.md` → 存进项目 `records/`。
 - 新建记录 → 输入标题，生成空白 `.md`（命名规则见 5.4），直接在页面里编辑。
 - 记录支持页面内**格式化查看与编辑**：前端读取 md 原文，渲染显示语法格式，编辑后保存回磁盘原文件。
-- 文件库的非 md 文件（pdf/word 等）不做预览，只支持下载。
+- 图片与 PDF 支持浮层内联预览（`?inline=1`，浏览器原生渲染）；word/excel/ppt/压缩包等浏览器无法渲染，只支持下载本地打开。
 - 记录里可以引用文件库的文件，写法：`[[原始文件名]]`。
 - 后端扫描 md 文本，把 `[[...]]` 解析成文件库里的下载链接。
 - **引用的是"名字"，不是某份文件**：同名文件删除后重传，引用自动指向新文件；文件不存在时引用标灰提示。
@@ -63,7 +64,7 @@
   - Excel：`xls`、`xlsx`
   - PDF：`pdf`
   - 压缩包：`zip`、`rar`、`7z`
-- 只支持上传和下载，不支持预览。
+- 图片/PDF 支持浮层预览，其余类型只支持上传和下载。
 - 上传后统一重命名，避免重名。
 - 列表显示原始文件名、类型、大小、上传时间、下载按钮。
 
@@ -87,7 +88,7 @@ Obsidian 库模式，只有一项核心设置——**工作目录**：
 - 不做登录、权限、用户
 - 不做状态、流程、审批
 - 不做周期规则、提醒、日历
-- 不做文件库文档的在线预览（md 记录的格式化查看/编辑除外）
+- 不做 word/excel/ppt 的在线预览（需前端解析库或 NAS 侧转换服务，均违背单 exe 无依赖原则）；图片/PDF 预览除外
 - 不做搜索（第一版）
 - 不做标签、分类、收藏
 - 不做统计、报表
@@ -241,7 +242,7 @@ Go 后端 API 服务
 workbench.json             # 只存工作目录指针 {"workspace": "D:\\我的工作台"}
 
 D:\我的工作台\              # 工作目录（用户指定，备份=拷这个文件夹）
-├─ index.db                # SQLite，可删可重建
+├─ index.db                # SQLite 缓存，每次启动删掉重建
 ├─ monthly/
 │   └─ 2026/
 │       └─ 2026-09/
@@ -249,7 +250,7 @@ D:\我的工作台\              # 工作目录（用户指定，备份=拷这�
 │           ├─ records/    # .md
 │           └─ files/      # 白名单文件
 └─ custom/
-    └─ 1_2026年安全检查/
+    └─ k7m2qtb_2026年安全检查/   # 短码即项目 id，改名只换后缀部分
         ├─ assets.json
         ├─ records/
         └─ files/
@@ -261,7 +262,8 @@ D:\我的工作台\              # 工作目录（用户指定，备份=拷这�
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| id | INTEGER | 主键，自增 |
+| id | INTEGER | 主键，自增，**仅内部外键**，重建索引时可变，不出现在任何响应里 |
+| key | TEXT | custom 目录短码 = 对外项目 id；月度的恒为空串（对外 id 由 `year_month` 推导）。部分唯一索引只约束 `type='custom'` |
 | name | TEXT | 项目名 |
 | type | TEXT | monthly / custom |
 | year_month | TEXT | 月度项目用，如 2026-09 |
@@ -272,7 +274,7 @@ D:\我的工作台\              # 工作目录（用户指定，备份=拷这�
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | INTEGER | 主键，自增 |
-| project_id | INTEGER | 所属项目 |
+| project_id | INTEGER | 所属项目的内部 rowid（响应里的 `project_id` 是短码/月度键，由 JOIN projects 推导） |
 | category | TEXT | record / file |
 | original_name | TEXT | 原始文件名 |
 | stored_name | TEXT | 重命名后的文件名 |
@@ -281,14 +283,7 @@ D:\我的工作台\              # 工作目录（用户指定，备份=拷这�
 | size | INTEGER | 文件大小 |
 | uploaded_at | TEXT | 上传时间 |
 
-**settings**
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| key | TEXT | 主键 |
-| value | TEXT | 值 |
-
-settings 当前只有一条：`workspace` = 当前工作目录路径（自省用）。权威指针是 exe 同目录 `workbench.json`，删库重建后从指针写回。
+库里没有设置表：设置的权威位置是 exe 同目录的 `workbench.json`（工作目录指针、端口、密码哈希、局域网开关），删库重建不影响。
 
 ### 5.4 重命名规则
 
@@ -313,7 +308,8 @@ YYYYMMDD_原文件名.扩展名
 
 启动时（以及每次重新指定工作目录后）：
 
-1. 扫描 `monthly/` 和 `custom/`，重建 `projects` 表
+0. `index.Open` 先把 `index.db`（含 `-wal`/`-shm`）删掉再建表——库是纯缓存，这样代码里永远只有当前这一份表结构，不存在「老库补列/旧索引改名」这类兼容分支。代价：资产 id 每次启动从 1 重新分配，之前复制出去的 `/assets/:id` 下载链接会漂；项目身份是目录短码，不受影响
+1. 扫描 `monthly/`（`年/YYYY-MM`）和 `custom/`（`<短码>_<名>`，短码不合规的目录只告警忽略），重建 `projects` 表；合并两份工作台可能带来重复短码或重名，重建时自动重生成短码 / 名称加序号并同步改目录名，个别目录改不动就跳过该项目并记 error，绝不因单条冲突让整库重建失败
 2. 逐项目读 `assets.json`，作为元数据权威来源
 3. 对账：清单有、磁盘没 → 删条目；磁盘有、清单没 → 按兜底规则补进清单（`original_name` 匹配 `^\d{8}_` 前缀则剥离，否则等于文件名；`uploaded_at` 用文件 mtime；category 由所在子目录推断）
 4. 用对账后的清单重建 `assets` 表
@@ -352,11 +348,13 @@ YYYYMMDD_原文件名.扩展名
 |---|---|---|
 | GET | `/projects` | 项目列表（当前月度 + 自定义 + 历史月度） |
 | POST | `/projects` | 新建自定义项目 |
-| GET | `/projects/current-monthly` | 当前月度项目，**只读不创建**：已存在返回实体；不存在返回虚拟节点（`pending: true`，无固定 id） |
+| GET | `/projects/current-monthly` | 当前月度项目，**只读不创建**：已存在返回实体；不存在返回虚拟节点（`pending: true`，id 为 `-YYYYMM`） |
 | GET | `/projects/:id` | 项目详情 |
+| PUT | `/projects/:id` | 项目改名（仅自定义；目录后缀与库记录同步改，短码不变） |
+| DELETE | `/projects/:id` | 删除项目（仅自定义；目录连同内容直接删除） |
 | GET | `/projects/:id/assets` | 项目下资产列表，`?category=record\|file` |
 
-任何写入（upload / records/blank）前，后端统一 ensure 目标项目目录与库记录——月度项目由此才落盘，虚拟节点换成真实 id。
+`:id` 一律是字符串：自定义项目是 7 位目录短码，月度项目是 `-YYYYMM`。任何写入（upload / records/blank）前，后端统一 ensure 目标项目目录与库记录——月度项目由此才落盘，虚拟节点换成真实行。
 
 ### 6.2 资产
 
@@ -364,28 +362,50 @@ YYYYMMDD_原文件名.扩展名
 |---|---|---|
 | POST | `/projects/:id/upload` | 上传文件，multipart，字段 `category` + `file` |
 | POST | `/projects/:id/records/blank` | 新建空白 md，body：`{ "title": "周小结" }` |
-| GET | `/assets/:id/download` | 下载，用原始文件名 |
+| GET | `/assets/:id/download` | 下载，用原始文件名；`?inline=1` 时 `Content-Disposition: inline` 且按扩展名给 Content-Type，供图片/PDF 浮层预览 |
 | GET | `/assets/:id/text` | 读取 md 文本（供前端渲染） |
 | PUT | `/assets/:id/text` | 保存 md 文本，原子写回磁盘原文件 |
 | GET | `/records/:id/references` | 扫描 `[[文件名]]`，返回匹配结果 |
+| POST | `/batch/delete` | 批量删除，body：`{ "ids": [...] }`；磁盘 + 清单 + 缓存同步删 |
+| GET | `/batch/download?ids=1,2,3` | 批量下载，打包 zip 流式返回（重名自动 `_2`） |
+| GET | `/search?q=关键词[&project=id]` | 按文件名模糊搜索（`original_name`），不带 `project` 为全库，上限 100 条 |
 
 `text` 读写只作用于 `category=record` 的资产；读写时顺带 `stat` 磁盘文件刷新缓存里的 size/mtime，页面编辑后列表数字不会过期。
 
-### 6.3 设置（工作目录）
+### 6.3 访问保护（NAS / 局域网）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/settings` | 返回 `{ workspace, workspace_exists, needs_select }` |
-| PUT | `/settings` | 指定/更换工作目录 `{ "workspace": "D:\\我的工作台" }`，立即写指针、建目录、全量重建索引 |
+| GET | `/auth/status` | 免鉴权：`{has_password, authorized}` |
+| POST | `/auth/login` | `{password}`，成功下发 httpOnly cookie `wb_session`（内存态，重启需重登） |
+| POST | `/auth/logout` | 主动退出：删除服务端会话 + 清 cookie |
+| PUT | `/access` | `{password, lan}`（null=不改，空串=清除）；开 LAN 必须先有密码，清除密码自动关 LAN |
+
+- 密码 sha256 存 exe 旁 `workbench.json`；未设置前所有请求直接放行。
+- 设了密码：除 status/login/logout/静态资源外全部接口需 cookie，未登录返回 401 → 前端弹全屏登录层。
+- 会话自登录起 **7 天过期**，过期或重启 exe 后需重新输密码；顶栏「退出」按钮可随时主动登出。
+- 修改密码会作废其他设备的会话（当前设备保持登录）。
+- `lan: true` 时监听 `0.0.0.0`（改动重启生效），其他设备用 `http://<IP>:<port>` 访问。
+- 忘记密码：删 `workbench.json` 里 `password_sha256` 字段后重启。
+
+### 6.4 设置（工作目录）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/settings` | 返回 `{ workspace, workspace_exists, needs_select, has_password, lan_enabled, port }` |
+| PUT | `/settings` | 指定/更换工作目录 `{ "workspace": "D:\\我的工作台" }`：先把旧目录的 `monthly/`、`custom/` 复制进新目录（同名不覆盖、不动源），再写指针并全量重建索引；返回带 `migrated`、`skipped` 计数 |
 
 - 指针缺失或指向的目录不存在时，除引导页所需接口外所有 API 返回 428 `workspace_required`，前端跳转引导页。
-- 更换工作目录**不迁移数据**：旧目录原样留在硬盘上，界面提示旧路径。
+- 更换工作目录**会迁移数据**，顺序是「建目录探测 → 复制 → 才写指针 → 重建索引」：先把旧目录的 `monthly/`、`custom/` 逐文件复制进新目录，全部成功后才把指针移到新目录。
+- 迁移的完整性保证：只复制不删改源，旧目录任何时刻都是完整可用的一份；每个文件走 `AtomicWrite`（`.tmp_*` → fsync → rename），断电也不会留下半个文件，残留临时文件由启动时 `CleanTemps` 清掉；复制中途报错则直接返回 500，指针仍留在旧目录。
+- 断电/中断后**不会自动续传**（无迁移日志），但因为「同名跳过」，重新切一次同一目标目录即等价于断点补齐；`index.db` 不复制，由新目录按「清单即真相」重建，自定义项目靠 `<短码>_<名>` 目录名保住 id（短码全局唯一，两份工作台合并也不会撞）。新目录与旧目录互相嵌套时直接 400 拒绝。
+- 选中的目录与当前目录相同则不迁移、不重开库，直接返回当前设置（重开会去删自己正打开的 `index.db`，Windows 上必然失败）。
 
-### 6.4 接口原则
+### 6.5 接口原则
 
 - 不用分页（数据量小）
-- 不做批量接口
-- 不做复杂查询
+- 批量只做删除与打包下载两件事
+- 搜索只按文件名，不做内容检索
 - 不做版本号管理
 
 ---
@@ -741,7 +761,7 @@ workbench/
 2. 批量下载
 3. 搜索（文件名、md 内容）
 4. 自动备份
-5. 工作目录数据迁移（换目录时自动搬旧数据）
+5. ~~工作目录数据迁移（换目录时自动搬旧数据）~~ 已实现
 6. 全文检索
 7. 标签
 8. 统计报表

@@ -1,20 +1,26 @@
-<script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+<script lang="ts">
 import MarkdownIt from 'markdown-it'
 import DOMPurify from 'dompurify'
-import { api, type ApiError } from '../api'
+
+// 模块级复用：解析器构造不便宜，随浮层开关重建纯属浪费
+const md = new MarkdownIt({ html: false, linkify: false })
+export { DOMPurify, md }
+</script>
+
+<script setup lang="ts">
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef } from 'vue'
+import { api } from '../api'
 import type { Asset, RefResult } from '../types'
-import { toast } from '../useToast'
+import FileIcon from './FileIcon.vue'
+import { errToast, toast } from '../useToast'
 
 const props = defineProps<{ asset: Asset; projectId: string; startEditing?: boolean }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
 
-const md = new MarkdownIt({ html: false, linkify: false })
-
 const text = ref('')
 const lastSaved = ref('')
 const size = ref(0)
-const refs = ref<RefResult[]>([])
+const refs = shallowRef<RefResult[]>([])
 const editing = ref(!!props.startEditing)
 const preview = ref(false)
 const dirty = ref(false)
@@ -40,7 +46,7 @@ async function load() {
     size.value = r.size
     refs.value = await api.getReferences(props.asset.id)
   } catch (e) {
-    toast((e as ApiError).message, true)
+    errToast(e)
   }
 }
 onMounted(load)
@@ -57,7 +63,7 @@ async function save() {
     emit('saved')
     toast('已保存')
   } catch (e) {
-    const err = e as ApiError
+    const err = e as Error & { status?: number }
     if (err.status === 409) {
       toast('文件在外部已变化，已重新载入最新内容', true)
       const r = await api.getText(props.asset.id)
@@ -67,7 +73,7 @@ async function save() {
       dirty.value = false
       preview.value = false
     } else {
-      toast(err.message, true)
+      errToast(err)
     }
   } finally {
     busy.value = false
@@ -189,7 +195,7 @@ function insertTable() {
 
 /* ---------- 插入文件 ---------- */
 const showInsert = ref(false)
-const insertList = ref<Asset[]>([])
+const insertList = shallowRef<Asset[]>([])
 const filterText = ref('')
 const filteredInsert = computed(() => {
   const q = filterText.value.trim().toLowerCase()
@@ -203,7 +209,7 @@ async function openInsert() {
     try {
       insertList.value = await api.listAssets(props.projectId, 'file')
     } catch (e) {
-      toast((e as ApiError).message, true)
+      errToast(e)
     }
   }
 }
@@ -238,7 +244,7 @@ function onPreviewClick(e: MouseEvent) {
   <div class="ov-mask" @click.self="close">
     <div class="ov">
       <header class="ov-head">
-        <strong>{{ asset.original_name }}</strong>
+        <FileIcon :ext="asset.ext" :category="asset.category" :size="18" /><strong>{{ asset.original_name }}</strong>
         <span v-if="dirty" class="dot" title="未保存" />
         <span style="flex:1"></span>
         <template v-if="editing">
@@ -255,30 +261,33 @@ function onPreviewClick(e: MouseEvent) {
 
       <div v-if="editing && !preview" class="toolbar" @mousedown="protectToolbar">
         <div class="tb-item">
-          <button class="tb-btn" @click="showHeadMenu = !showHeadMenu; showInsert = false">标题 ▾</button>
+          <button class="tbg-btn" :class="{ selected: showHeadMenu }" @click="showHeadMenu = !showHeadMenu; showInsert = false">标题 ▾</button>
           <div v-if="showHeadMenu" class="tb-menu">
             <div class="tb-menu-item" @click="setHeading(0)">正文</div>
             <div v-for="l in 6" :key="l" class="tb-menu-item" @click="setHeading(l)">H{{ l }} 标题</div>
           </div>
         </div>
-        <span class="tb-sep" />
-        <button class="tb-btn" title="加粗 Ctrl+B" @click="wrapSel('**', '**', '粗体')"><b>B</b></button>
-        <button class="tb-btn" title="斜体 Ctrl+I" @click="wrapSel('*', '*', '斜体')"><i>I</i></button>
-        <button class="tb-btn" title="行内代码" @click="wrapSel('`', '`', 'code')">&lt;/&gt;</button>
-        <button class="tb-btn" title="代码块" @click="wrapSel('```\n', '\n```', '代码')">代码块</button>
-        <span class="tb-sep" />
-        <button class="tb-btn" title="无序列表" @click="toggleUl">• 列表</button>
-        <button class="tb-btn" title="有序列表" @click="toggleOl">1. 列表</button>
-        <button class="tb-btn" title="引用" @click="linePrefix(l => l.startsWith('>') ? l.replace(/^>\s?/, '') : `> ${l.replace(/^\s*>\s?/, '')}`)">❝ 引用</button>
-        <button class="tb-btn" title="表格" @click="insertTable">表格</button>
-        <button class="tb-btn" title="链接" @click="wrapSel('[', '](https://)', '链接文字')">链接</button>
-        <span class="tb-sep" />
-        <button class="tb-btn" @click="openInsert">插入文件 ▾</button>
-        <div v-if="showInsert" class="tb-menu tb-menu-wide">
-          <input class="input" v-model="filterText" placeholder="筛选…" style="margin-bottom:6px" />
-          <div class="tb-menu-scroll">
-            <div v-for="a in filteredInsert" :key="a.id" class="tb-menu-item" @click="insertRef(a.original_name)">[[{{ a.original_name }}]]</div>
-            <div v-if="!filteredInsert.length" class="empty" style="padding:16px">项目文件库暂无文件</div>
+        <div class="tbg">
+          <button class="tbg-btn" title="加粗 Ctrl+B" @click="wrapSel('**', '**', '粗体')"><b>B</b></button>
+          <button class="tbg-btn" title="斜体 Ctrl+I" @click="wrapSel('*', '*', '斜体')"><i>I</i></button>
+          <button class="tbg-btn" title="行内代码" @click="wrapSel('`', '`', 'code')">&lt;/&gt;</button>
+          <button class="tbg-btn" title="代码块" @click="wrapSel('```\n', '\n```', '代码')">代码块</button>
+        </div>
+        <div class="tbg">
+          <button class="tbg-btn" title="无序列表" @click="toggleUl">• 列表</button>
+          <button class="tbg-btn" title="有序列表" @click="toggleOl">1. 列表</button>
+          <button class="tbg-btn" title="引用" @click="linePrefix(l => l.startsWith('>') ? l.replace(/^>\s?/, '') : `> ${l.replace(/^\s*>\s?/, '')}`)">❝ 引用</button>
+          <button class="tbg-btn" title="表格" @click="insertTable">表格</button>
+          <button class="tbg-btn" title="链接" @click="wrapSel('[', '](https://)', '链接文字')">链接</button>
+        </div>
+        <div class="tb-item">
+          <button class="tbg-btn" :class="{ selected: showInsert }" @click="openInsert">插入文件 ▾</button>
+          <div v-if="showInsert" class="tb-menu tb-menu-wide">
+            <input class="input" v-model="filterText" placeholder="筛选…" style="margin-bottom:6px" />
+            <div class="tb-menu-scroll">
+              <div v-for="a in filteredInsert" :key="a.id" class="tb-menu-item" @click="insertRef(a.original_name)"><FileIcon :ext="a.ext" category="file" />[[{{ a.original_name }}]]</div>
+              <div v-if="!filteredInsert.length" class="empty" style="padding:16px">项目文件库暂无文件</div>
+            </div>
           </div>
         </div>
       </div>
@@ -300,23 +309,24 @@ function onPreviewClick(e: MouseEvent) {
   position: fixed;
   inset: 0;
   background: var(--ui-overlay);
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
-  animation: fade-in 0.18s ease-out;
+  animation: fade-in 0.15s cubic-bezier(0, 0, 0.2, 1);
 }
 .ov {
-  background: var(--ui-background);
+  background: var(--ui-surface);
   border-radius: var(--radius-large);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--ui-overlay-shadow);
   width: min(860px, calc(100vw - 32px));
   height: min(640px, 88vh);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: pop-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  animation: pop-in 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 .ov-head {
   display: flex;
@@ -344,46 +354,48 @@ function onPreviewClick(e: MouseEvent) {
   outline: none;
 }
 
-.kbd { font-size: 10px; opacity: 0.75; border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 4px; padding: 0 4px; margin-left: 4px; }
+/* HeroUI kbd：bg-default、圆角 8、px-2、500 字重 */
+.kbd { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 8px; margin-left: 4px;
+  background: var(--ui-default); color: var(--ui-muted); font-size: 12px; font-weight: 500; }
 
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 6px 16px;
+  gap: 8px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--ui-divider);
-  background: var(--ui-content-background1);
   flex-shrink: 0;
   position: relative;
   flex-wrap: wrap;
 }
-.tb-item { position: relative; }
-.tb-btn {
-  border: none;
-  background: none;
-  font-family: inherit;
-  font-size: 13px;
-  color: var(--ui-content2);
-  padding: 4px 9px;
-  border-radius: var(--radius-small);
-  cursor: pointer;
-}
-.tb-btn:hover { background: var(--ui-content-background2); color: var(--ui-content1); }
-.tb-sep { width: 1px; height: 16px; background: var(--ui-default-300); margin: 0 6px; }
+.tb-item { position: relative; display: inline-flex; }
+/* 下拉 = HeroUI dropdown popover：overlay 底、圆角 24、overlay 阴影、菜单内衬 6px */
 .tb-menu {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 6px);
   left: 0;
   z-index: 20;
   min-width: 130px;
-  background: var(--ui-background);
-  border: 1px solid var(--ui-default-200);
-  border-radius: var(--radius-medium);
-  box-shadow: var(--shadow-md);
-  padding: 4px;
+  background: var(--ui-surface);
+  border-radius: var(--radius-large);
+  box-shadow: var(--ui-overlay-shadow);
+  padding: 6px;
 }
-.tb-menu-wide { width: 280px; padding: 10px; }
-.tb-menu-item { padding: 6px 10px; border-radius: var(--radius-small); cursor: pointer; font-size: 13px; }
-.tb-menu-item:hover { background: var(--ui-content-background1); }
+.tb-menu-wide { width: 280px; }
+/* 菜单项按 list-box-item：min-h 36、padding 6/10、圆角 16、悬停底色瞬切 */
+.tb-menu-item {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: transform 0.25s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+@media (hover: hover) {
+  .tb-menu-item:hover { background: var(--ui-default); }
+}
+.tb-menu-item:active { transform: scale(0.98); }
 .tb-menu-scroll { max-height: 260px; overflow-y: auto; }
 </style>

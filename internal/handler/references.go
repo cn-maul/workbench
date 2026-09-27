@@ -15,9 +15,9 @@ import (
 var refRe = regexp.MustCompile(`\[\[(.+?)\]\]`)
 
 type refResult struct {
-	Name      string        `json:"name"`
-	Exists    bool          `json:"exists"`
-	Matched   *model.Asset  `json:"matched,omitempty"`
+	Name       string        `json:"name"`
+	Exists     bool          `json:"exists"`
+	Matched    *model.Asset  `json:"matched,omitempty"`
 	Candidates []model.Asset `json:"candidates"`
 }
 
@@ -41,7 +41,7 @@ func (s *Server) HandleReferences(c *gin.Context) {
 		fail(c, 404, "文件已不存在")
 		return
 	}
-	assets, err := s.DB.ListAssets(a.ProjectID, model.CatFile)
+	assets, err := s.DB.ListAssets(a.ProjectRowID, model.CatFile)
 	if err != nil {
 		fail(c, 500, err.Error())
 		return

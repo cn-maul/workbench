@@ -1,11 +1,12 @@
 package index
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
+	"sort"
 	"strings"
 	"time"
 
@@ -15,46 +16,83 @@ import (
 
 var ymRe = regexp.MustCompile(`^\d{4}-\d{2}$`)
 var yearRe = regexp.MustCompile(`^\d{4}$`)
-var customDirRe = regexp.MustCompile(`^(\d+)_(.+)$`)
 
-type projKey struct {
+// projRow 是「磁盘扫出来的一个项目」，Key 为 custom 短码（月度空）。
+type projRow struct {
 	Type string
-	YM   string // 月度用；自定义为空
-	Name string // 自定义用
+	YM   string
+	Name string
+	Key  string
+	Dir  string
+}
+
+// fixCustomDir 把目录改名为 <key>_<name> 并回写扫描结果。
+func fixCustomDir(pr *projRow, key, name string) error {
+	newDir := filepath.Join(filepath.Dir(pr.Dir), store.ProjectDirName(key, name))
+	if err := os.Rename(pr.Dir, newDir); err != nil {
+		return err
+	}
+	pr.Key, pr.Name, pr.Dir = key, name, newDir
+	return nil
+}
+
+// healCustomConflicts 处理合并两个工作目录带来的重复短码/重名：短码随机重生成、
+// 项目名加序号，磁盘目录跟着改。自愈失败就丢掉这个项目——
+// 撞 UNIQUE 会让整库重建失败，少一个项目只是少一次可见性。
+func healCustomConflicts(projs []projRow) []projRow {
+	seenKey := map[string]bool{}
+	seenName := map[string]bool{}
+	keep := projs[:0]
+	for i := range projs {
+		pr := projs[i]
+		if pr.Type != model.TypeCustom {
+			keep = append(keep, pr)
+			continue
+		}
+		for attempt := 0; seenKey[pr.Key] && attempt < 50; attempt++ {
+			key, err := store.NewProjectKey()
+			if err != nil || seenKey[key] {
+				continue
+			}
+			if err := fixCustomDir(&pr, key, pr.Name); err != nil {
+				slog.Error("重复短码目录改名失败", "dir", pr.Dir, "err", err)
+				break
+			}
+		}
+		for seenName[pr.Name] {
+			renamed := false
+			for n := 2; n < 100; n++ {
+				cand := fmt.Sprintf("%s %d", pr.Name, n)
+				if seenName[cand] {
+					continue
+				}
+				if err := fixCustomDir(&pr, pr.Key, cand); err != nil {
+					slog.Error("重名目录改名失败", "dir", pr.Dir, "err", err)
+					break
+				}
+				renamed = true
+				break
+			}
+			if !renamed {
+				break
+			}
+		}
+		if seenKey[pr.Key] || seenName[pr.Name] {
+			slog.Error("自定义项目短码或名称无法去重，本次重建忽略", "key", pr.Key, "name", pr.Name, "dir", pr.Dir)
+			continue
+		}
+		seenKey[pr.Key], seenName[pr.Name] = true, true
+		keep = append(keep, pr)
+	}
+	return keep
 }
 
 // Rebuild 以文件系统+清单为真相，全量重建 projects/assets 两张表。
-// 旧库可用时按 stored_path / 项目定位键沿用原 id，保证重建后 id 稳定。
+// 项目的对外身份是目录短码（custom）或 -YYYYMM（月度），内部 rowid 每次重建都可以变。
+// 资产 id 同理：Open 每次启动都删掉 index.db，重建后 id 一律从 1 重新分配，
+// 复制出去的 /assets/:id 下载链接会漂——这是「库即缓存」设计的已知代价（见计划书 5.5）。
 func (d *DB) Rebuild(root string) error {
-	// 旧 id 快照（库损坏或空表时忽略）
-	projIDByKey := map[projKey]int64{}
-	assetIDByPath := map[string]int64{}
-	if rows, err := d.Query(`SELECT id,name,type,year_month FROM projects`); err == nil {
-		for rows.Next() {
-			var k projKey
-			var id int64
-			if rows.Scan(&id, &k.Name, &k.Type, &k.YM) == nil {
-				if k.Type == model.TypeMonthly {
-					k.Name = "" // 月度的 name 恒等于 year_month，不参与定位键
-				}
-				projIDByKey[k] = id
-			}
-		}
-		rows.Close()
-	}
-	if rows, err := d.Query(`SELECT id,stored_path FROM assets`); err == nil {
-		for rows.Next() {
-			var id int64
-			var sp string
-			if rows.Scan(&id, &sp) == nil {
-				assetIDByPath[sp] = id
-			}
-		}
-		rows.Close()
-	}
-
-	newProjects := map[projKey]int64{} // key -> 期望id（自定义带号，月度0=自动）
-	projDirs := map[projKey]string{}
+	var projs []projRow
 
 	// 1. 月度项目
 	years, err := os.ReadDir(filepath.Join(root, "monthly"))
@@ -68,33 +106,48 @@ func (d *DB) Rebuild(root string) error {
 				if !m.IsDir() || !ymRe.MatchString(m.Name()) {
 					continue
 				}
-				k := projKey{Type: model.TypeMonthly, YM: m.Name()}
-				newProjects[k] = 0
-				projDirs[k] = filepath.Join(root, "monthly", y.Name(), m.Name())
+				projs = append(projs, projRow{
+					Type: model.TypeMonthly, YM: m.Name(), Name: m.Name(),
+					Dir: filepath.Join(root, "monthly", y.Name(), m.Name()),
+				})
 			}
 		}
 	}
 
-	// 2. 自定义项目
+	// 2. 自定义项目：目录名 <短码>_<项目名>
 	customs, err := os.ReadDir(filepath.Join(root, "custom"))
 	if err == nil {
 		for _, c := range customs {
 			if !c.IsDir() {
 				continue
 			}
-			m := customDirRe.FindStringSubmatch(c.Name())
-			if m == nil {
+			key, name, ok := store.ParseCustomDir(c.Name())
+			if !ok {
 				slog.Warn("忽略不合规的 custom 目录", "dir", c.Name())
 				continue
 			}
-			id, _ := strconv.ParseInt(m[1], 10, 64)
-			k := projKey{Type: model.TypeCustom, Name: m[2]}
-			newProjects[k] = id
-			projDirs[k] = filepath.Join(root, "custom", c.Name())
+			projs = append(projs, projRow{
+				Type: model.TypeCustom, Name: name, Key: key,
+				Dir: filepath.Join(root, "custom", c.Name()),
+			})
 		}
 	}
 
-	// 3. 清空重建
+	// 3. 合并两份工作台时可能出现重复短码或重复项目名：改名自愈，别把整个重建搞失败
+	projs = healCustomConflicts(projs)
+
+	// 4. 稳定顺序（短码/年月），让内部 rowid 可复现
+	sort.Slice(projs, func(i, j int) bool {
+		if projs[i].Type != projs[j].Type {
+			return projs[i].Type > projs[j].Type
+		}
+		if projs[i].YM != projs[j].YM {
+			return projs[i].YM > projs[j].YM
+		}
+		return projs[i].Key < projs[j].Key
+	})
+
+	// 5. 清空重建
 	tx, err := d.Begin()
 	if err != nil {
 		return err
@@ -107,96 +160,92 @@ func (d *DB) Rebuild(root string) error {
 		return err
 	}
 
-	insProj := func(id int64, name, ptype, ym string) (int64, error) {
+	insProj := func(pr projRow) (int64, error) {
 		now := time.Now().Format(time.RFC3339)
-		if id > 0 {
-			_, err := tx.Exec(`INSERT INTO projects(id,name,type,year_month,created_at) VALUES(?,?,?,?,?)`, id, name, ptype, ym, now)
-			return id, err
-		}
-		res, err := tx.Exec(`INSERT INTO projects(name,type,year_month,created_at) VALUES(?,?,?,?)`, name, ptype, ym, now)
+		res, err := tx.Exec(`INSERT INTO projects(key,name,type,year_month,created_at) VALUES(?,?,?,?,?)`,
+			pr.Key, pr.Name, pr.Type, pr.YM, now)
 		if err != nil {
 			return 0, err
 		}
 		return res.LastInsertId()
 	}
 
-	insAsset := func(projectID int64, category, original, stored, relPath, ext string, size int64, uploaded string) error {
-		id := assetIDByPath[relPath]
-		var err error
-		if id > 0 {
-			_, err = tx.Exec(`INSERT INTO assets(id,project_id,category,original_name,stored_name,stored_path,ext,size,uploaded_at)
-				VALUES(?,?,?,?,?,?,?,?,?)`, id, projectID, category, original, stored, relPath, ext, size, uploaded)
-		} else {
-			_, err = tx.Exec(`INSERT INTO assets(project_id,category,original_name,stored_name,stored_path,ext,size,uploaded_at)
-				VALUES(?,?,?,?,?,?,?,?)`, projectID, category, original, stored, relPath, ext, size, uploaded)
-		}
+	insAsset := func(projectRowID int64, category, original, stored, relPath, ext string, size int64, uploaded string) error {
+		_, err := tx.Exec(`INSERT INTO assets(project_id,category,original_name,stored_name,stored_path,ext,size,uploaded_at)
+			VALUES(?,?,?,?,?,?,?,?)`, projectRowID, category, original, stored, relPath, ext, size, uploaded)
 		return err
 	}
 
 	changedProjects := 0
-	// 4. 逐项目插入并对账清单
-	for k, wantID := range newProjects {
-		dir := projDirs[k]
-		name := k.YM
-		if k.Type == model.TypeCustom {
-			name = k.Name
-		}
-		pid, err := insProj(max(wantID, projIDByKey[k]), name, k.Type, k.YM)
+	// 6. 逐项目插入并对账清单。rowid 全部由 SQLite 自增分配，绝不写显式 id。
+	for _, pr := range projs {
+		pid, err := insProj(pr)
 		if err != nil {
 			return err
 		}
+		dir := pr.Dir
 		changedProjects++
 
+		// 清单不分类别（key 是存储文件名），对账必须整体做一次：
+		// 按「文件实际所在的子目录」推断 category。若按类别分轮各自对账同一份清单，
+		// 第一轮会把另一类别（files/）的条目误判为「清单有、磁盘没」整批删掉。
+		manifest := store.LoadManifest(dir)
+		type diskFile struct {
+			category string
+			entry    os.DirEntry
+		}
+		onDisk := map[string]diskFile{}
 		for _, category := range []string{model.CatRecord, model.CatFile} {
-			catDir := store.CategoryDir(dir, category)
-			entries, err := os.ReadDir(catDir)
+			entries, err := os.ReadDir(store.CategoryDir(dir, category))
 			if err != nil {
 				continue // 目录不存在 = 没有该类别资产
 			}
-			manifest := store.LoadManifest(dir)
-			onDisk := map[string]os.DirEntry{}
 			for _, e := range entries {
 				if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 					continue
 				}
-				onDisk[e.Name()] = e
+				onDisk[e.Name()] = diskFile{category: category, entry: e}
 			}
-			// 清单有、磁盘没 → 从清单删除
-			dirty := false
-			for stored := range manifest {
-				if _, ok := onDisk[stored]; !ok {
-					delete(manifest, stored)
-					dirty = true
-				}
-			}
-			// 磁盘有、清单没 → 兜底规则补录
-			for stored, e := range onDisk {
-				if _, ok := manifest[stored]; ok {
-					continue
-				}
-				info, err := e.Info()
-				if err != nil {
-					continue
-				}
-				orig, uploaded := store.FallbackMeta(stored, info.ModTime())
-				manifest[stored] = store.ManifestEntry{OriginalName: orig, UploadedAt: uploaded}
+		}
+		// 清单有、磁盘没 → 从清单删除；磁盘有、清单没 → 兜底规则补录
+		dirty := false
+		for stored := range manifest {
+			if _, ok := onDisk[stored]; !ok {
+				delete(manifest, stored)
 				dirty = true
 			}
-			if dirty {
-				if err := store.SaveManifest(dir, manifest); err != nil {
-					slog.Error("写清单失败", "dir", dir, "err", err)
-				}
+		}
+		for stored, df := range onDisk {
+			if _, ok := manifest[stored]; ok {
+				continue
 			}
-			for stored, entry := range manifest {
-				info, err := onDisk[stored].Info()
-				if err != nil {
-					continue
-				}
-				if err := insAsset(pid, category, entry.OriginalName, stored,
-					store.RelPath(root, dir, category, stored),
-					strings.ToLower(strings.TrimPrefix(filepath.Ext(stored), ".")), info.Size(), entry.UploadedAt); err != nil {
-					return err
-				}
+			info, err := df.entry.Info()
+			if err != nil {
+				continue
+			}
+			orig, uploaded := store.FallbackMeta(stored, info.ModTime())
+			manifest[stored] = store.ManifestEntry{OriginalName: orig, UploadedAt: uploaded}
+			dirty = true
+		}
+		if dirty {
+			if err := store.SaveManifest(dir, manifest); err != nil {
+				slog.Error("写清单失败", "dir", dir, "err", err)
+			}
+		}
+		// 入库以磁盘为准（category 由所在子目录决定），元数据取对账后的清单
+		for stored, df := range onDisk {
+			entry, ok := manifest[stored]
+			if !ok {
+				continue
+			}
+			info, err := df.entry.Info()
+			if err != nil {
+				continue
+			}
+			if err := insAsset(pid, df.category, entry.OriginalName, stored,
+				store.RelPath(root, dir, df.category, stored),
+				strings.ToLower(strings.TrimPrefix(filepath.Ext(stored), ".")), info.Size(), entry.UploadedAt); err != nil {
+				return err
 			}
 		}
 	}

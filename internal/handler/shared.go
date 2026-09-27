@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -17,57 +19,65 @@ import (
 )
 
 type Server struct {
-	Cfg *config.Config
-	DB  *index.DB
+	Cfg      *config.Config
+	DB       *index.DB
+	SessMu   sync.Mutex
+	Sessions map[string]time.Time // token → 登录时间，超过 sessionTTL 失效
 }
 
-func virtualID(ym string) int64 {
-	n, _ := strconv.ParseInt(ym[:4]+ym[5:7], 10, 64)
-	return -n
-}
-
-// resolveProject 支持真实 id 与虚拟月度 id（-YYYYMM）。
+// resolveProject 解析对外项目 id：custom 短码，或月度的 -YYYYMM（可 pending）。
 func (s *Server) resolveProject(raw string) (*model.Project, bool, error) {
-	n, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return nil, false, fmt.Errorf("非法项目 id")
-	}
-	if n < 0 {
-		ym := fmt.Sprintf("%04d-%02d", -n/100, -n%100)
+	raw = strings.TrimSpace(raw)
+	if strings.HasPrefix(raw, "-") {
+		ym, err := ymFromKey(raw)
+		if err != nil {
+			return nil, false, err
+		}
 		if p, err := s.DB.FindMonthly(ym); err == nil {
 			return p, false, nil
 		}
-		return &model.Project{ID: n, Name: ym, Type: model.TypeMonthly, YearMonth: ym}, true, nil
+		return &model.Project{ID: raw, Name: ym, Type: model.TypeMonthly, YearMonth: ym}, true, nil
 	}
-	p, err := s.DB.GetProject(n)
+	if !store.ValidProjectKey(raw) {
+		return nil, false, fmt.Errorf("非法项目 id")
+	}
+	p, err := s.DB.FindByKey(raw)
 	return p, false, err
 }
 
-// ensureProject 保证项目目录与库记录存在（月度项目由此落盘）。
+// ymFromKey 把 -YYYYMM 还原为 2006-01；月份越界视为非法。
+func ymFromKey(key string) (string, error) {
+	digits := key[1:]
+	if len(digits) != 6 {
+		return "", fmt.Errorf("非法项目 id")
+	}
+	y, err := strconv.Atoi(digits[:4])
+	if err != nil {
+		return "", fmt.Errorf("非法项目 id")
+	}
+	m, err := strconv.Atoi(digits[4:])
+	if err != nil || m < 1 || m > 12 {
+		return "", fmt.Errorf("非法项目 id")
+	}
+	return fmt.Sprintf("%04d-%02d", y, m), nil
+}
+
+// ensureProject 保证月度项目落盘（自定义项目在创建接口里就建好了，不会是 pending）。
 func (s *Server) ensureProject(p *model.Project, pending bool) (*model.Project, error) {
 	if !pending {
 		return p, nil
 	}
-	if p.Type == model.TypeMonthly {
-		if existing, err := s.DB.FindMonthly(p.YearMonth); err == nil {
-			return existing, s.ensureDirs(existing)
-		}
+	if p.Type != model.TypeMonthly {
+		return nil, fmt.Errorf("非法项目 id")
 	}
-	var id int64
-	var err error
-	if p.Type == model.TypeCustom {
-		id, err = s.DB.NextCustomID()
-		if err != nil {
-			return nil, err
-		}
-		id, err = s.DB.InsertProject(p.Name, p.Type, "", id)
-	} else {
-		id, err = s.DB.InsertProject(p.Name, p.Type, p.YearMonth, 0)
+	if existing, err := s.DB.FindMonthly(p.YearMonth); err == nil {
+		return existing, s.ensureDirs(existing)
 	}
+	rowID, err := s.DB.InsertProject("", p.Name, p.Type, p.YearMonth)
 	if err != nil {
 		return nil, err
 	}
-	proj, err := s.DB.GetProject(id)
+	proj, err := s.DB.GetProjectByRowID(rowID)
 	if err != nil {
 		return nil, err
 	}

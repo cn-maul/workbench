@@ -19,5 +19,8 @@
     "@vitejs/plugin-vue": "^6.0.0",
     "typescript": "^5.6.0",
     "@types/markdown-it": "^14.1.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
   }
 }
